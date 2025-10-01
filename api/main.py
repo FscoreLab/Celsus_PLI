@@ -15,39 +15,32 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-# Добавляем пути для импортов
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Import after path setup
-from api.inference_service import LightGBMInferenceService  # noqa: E402
+from api.inference_service import LightGBMInferenceService
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация FastAPI
 app = FastAPI(
     title="CT-CLIP + LightGBM Inference API",
     description="API для инференса CT-CLIP моделей с LightGBM классификацией на DICOM архивах",
     version="2.0.0",
 )
 
-# Пути к моделям
 SUPERVISED_MODEL_PATH = os.getenv("SUPERVISED_MODEL_PATH", "/app/models/CT_CLIP_Supervised_finetune_Zheka.pt")
 CTCLIP_MODEL_PATH = os.getenv("CTCLIP_MODEL_PATH", "/app/models/CT_VocabFine_v2.pt")
 LIGHTGBM_MODEL_PATH = os.getenv("LIGHTGBM_MODEL_PATH", "/app/models/lightgbm_model.pkl")
 OPTIMAL_THRESHOLD = float(os.getenv("OPTIMAL_THRESHOLD", "0.4"))
 DEVICE = os.getenv("DEVICE", "cuda")
 
-# Diffusion models (optional)
 DIFFUSION_CLASSIFIER_PATH = os.getenv("DIFFUSION_CLASSIFIER_PATH", None)
 DIFFUSION_UNET_PATH = os.getenv("DIFFUSION_UNET_PATH", None)
 CLASSIFIER_SCALE = float(os.getenv("CLASSIFIER_SCALE", "100.0"))
 
-# Глобальный inference service
 inference_service = None
 
 
@@ -77,22 +70,20 @@ async def startup_event():
     logger.info(f"LightGBM Model: {LIGHTGBM_MODEL_PATH}")
     logger.info(f"Optimal Threshold: {OPTIMAL_THRESHOLD}")
     logger.info(f"Device: {DEVICE}")
-    
+
     if DIFFUSION_CLASSIFIER_PATH:
         logger.info(f"Diffusion Classifier: {DIFFUSION_CLASSIFIER_PATH}")
     if DIFFUSION_UNET_PATH:
         logger.info(f"Diffusion UNet: {DIFFUSION_UNET_PATH}")
         logger.info(f"Classifier Scale: {CLASSIFIER_SCALE}")
 
-    # Проверяем существование моделей
     if not os.path.exists(SUPERVISED_MODEL_PATH):
         raise FileNotFoundError(f"Supervised модель не найдена: {SUPERVISED_MODEL_PATH}")
     if not os.path.exists(CTCLIP_MODEL_PATH):
         raise FileNotFoundError(f"CT-CLIP модель не найдена: {CTCLIP_MODEL_PATH}")
     if not os.path.exists(LIGHTGBM_MODEL_PATH):
         raise FileNotFoundError(f"LightGBM модель не найдена: {LIGHTGBM_MODEL_PATH}")
-    
-    # Проверяем diffusion модели если указаны
+
     if DIFFUSION_CLASSIFIER_PATH and not os.path.exists(DIFFUSION_CLASSIFIER_PATH):
         raise FileNotFoundError(f"Diffusion classifier не найден: {DIFFUSION_CLASSIFIER_PATH}")
     if DIFFUSION_UNET_PATH and not os.path.exists(DIFFUSION_UNET_PATH):
@@ -142,14 +133,12 @@ async def predict(file: UploadFile = File(...)):
     if inference_service is None:
         raise HTTPException(status_code=503, detail="Сервис не инициализирован")
 
-    # Проверяем формат файла
     if not file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="Поддерживаются только ZIP архивы с DICOM файлами")
 
     start_time = time.time()
 
     try:
-        # Сохраняем загруженный файл во временную директорию
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_file:
             content = await file.read()
             temp_file.write(content)
@@ -157,10 +146,8 @@ async def predict(file: UploadFile = File(...)):
 
         logger.info(f"Обрабатываем файл: {file.filename} ({len(content)} bytes)")
 
-        # Запускаем инференс
         result = inference_service.process_zip_archive(temp_file_path)
 
-        # Удаляем временный файл
         os.unlink(temp_file_path)
 
         processing_time = time.time() - start_time
@@ -183,7 +170,6 @@ async def predict(file: UploadFile = File(...)):
         logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}")
         processing_time = time.time() - start_time
 
-        # Пытаемся удалить временный файл при ошибке
         try:
             if "temp_file_path" in locals():
                 os.unlink(temp_file_path)

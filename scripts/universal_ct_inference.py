@@ -24,7 +24,6 @@ import torch
 import torch.nn.functional as F
 from transformers import BertModel, BertTokenizer
 
-# Add paths for imports
 sys.path.append(str(Path(__file__).parent))
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -41,23 +40,16 @@ def resize_array(array, current_spacing, target_spacing):
     Returns:
     np.ndarray: Resized array.
     """
-    # Calculate new dimensions
     original_shape = array.shape[2:]
-    scaling_factors = [
-        current_spacing[i] / target_spacing[i] for i in range(len(original_shape))
-    ]
-    new_shape = [
-        int(original_shape[i] * scaling_factors[i]) for i in range(len(original_shape))
-    ]
-    # Resize the array
-    resized_array = F.interpolate(array, size=new_shape, mode='trilinear', align_corners=False).cpu().numpy()
+    scaling_factors = [current_spacing[i] / target_spacing[i] for i in range(len(original_shape))]
+    new_shape = [int(original_shape[i] * scaling_factors[i]) for i in range(len(original_shape))]
+    resized_array = F.interpolate(array, size=new_shape, mode="trilinear", align_corners=False).cpu().numpy()
     return resized_array
+
 
 import dicom2nifti
 
 from CT_CLIP.ct_clip.ct_clip import CTCLIP
-
-# Import CT-CLIP components
 from transformer_maskgit.transformer_maskgit.ctvit import CTViT
 
 
@@ -87,13 +79,11 @@ class UniversalCTInference:
 
         # Initialize model components
         self.tokenizer = None
-        self.model = model  # Can be pre-loaded model or None
+        self.model = model
 
-        # DICOM processing components (lazy loaded)
         self.dicom_extractor = None
         self.dicom_converter = None
 
-        # Default pathologies from CT-CLIP paper
         self.pathologies = [
             "Medical material",
             "Arterial wall calcification",
@@ -121,15 +111,13 @@ class UniversalCTInference:
     def load_model(self):
         """Load CT-CLIP model components."""
         if self.model is not None and self.tokenizer is not None:
-            return  # Already loaded
+            return
 
         if self.verbose:
             print("Loading CT-CLIP model...")
 
-        # Initialize tokenizer
         self.tokenizer = BertTokenizer.from_pretrained("microsoft/BiomedVLP-CXR-BERT-specialized", do_lower_case=True)
 
-        # If model is already provided, just move to device and set eval mode
         if self.model is not None:
             self.model.to(self.device)
             self.model.eval()
@@ -137,15 +125,12 @@ class UniversalCTInference:
                 print("Using pre-loaded model!")
             return
 
-        # Otherwise load from file
         if self.model_path is None:
             raise ValueError("Either model or model_path must be provided")
 
-        # Initialize text encoder
         text_encoder = BertModel.from_pretrained("microsoft/BiomedVLP-CXR-BERT-specialized")
         text_encoder.resize_token_embeddings(len(self.tokenizer))
 
-        # Initialize image encoder
         image_encoder = CTViT(
             dim=512,
             codebook_size=8192,
@@ -158,7 +143,6 @@ class UniversalCTInference:
             heads=8,
         )
 
-        # Initialize CT-CLIP model
         self.model = CTCLIP(
             image_encoder=image_encoder,
             text_encoder=text_encoder,
@@ -171,7 +155,6 @@ class UniversalCTInference:
             use_all_token_embeds=False,
         )
 
-        # Load pretrained weights
         checkpoint = torch.load(self.model_path, map_location=self.device)
         if "model_state_dict" in checkpoint:
             self.model.load_state_dict(checkpoint["model_state_dict"], strict=False)
@@ -186,12 +169,11 @@ class UniversalCTInference:
 
     def _init_dicom_components(self):
         """Lazy initialization of DICOM processing components."""
-        # DICOM converter no longer needed - using dicom2nifti library
         pass
 
     def nii_to_tensor(self, nii_file, spacing=None, min_slices=20):
         """Convert NIFTI file to tensor in CT-CLIP format following original pipeline.
-        
+
         Args:
             nii_file: Path to NIFTI file
             spacing: Optional spacing override (will use real spacing from header if None)
@@ -199,16 +181,16 @@ class UniversalCTInference:
         """
         if self.verbose:
             print(f"Processing NIFTI file: {nii_file}")
-            
+
         # Load NIFTI file
         img = nib.load(nii_file)
         img_data = img.get_fdata()
-        
+
         # Read real spacing from NIFTI header
         # header.get_zooms() returns (z, x, y), but we need (z, xy, xy) for processing
         zooms = img.header.get_zooms()
         real_spacing = (zooms[0], zooms[1], zooms[2])  # (z, x, y)
-        
+
         if self.verbose:
             print(f"   Loaded shape: {img_data.shape}")
             print(f"   Raw range: {img_data.min():.1f} to {img_data.max():.1f}")
@@ -216,24 +198,24 @@ class UniversalCTInference:
 
         # STEP 1: NO RescaleSlope/Intercept - NIFTI already contains HU values!
         # (Original code incorrectly applied them twice)
-        
+
         # STEP 2: Apply HU windowing (like original)
         hu_min, hu_max = -1000, 1000
         img_data = np.clip(img_data, hu_min, hu_max)
-        
+
         if self.verbose:
             print(f"   After HU windowing: {img_data.min():.1f} to {img_data.max():.1f}")
-        
+
         # STEP 3: Transpose to match original format [H,W,D] -> [D,H,W]
         img_data = img_data.transpose(2, 0, 1)
-        
+
         if self.verbose:
             print(f"   After transpose: {img_data.shape}")
-        
+
         # STEP 4: Convert to tensor and apply spacing-based resize (like original)
         tensor = torch.tensor(img_data, dtype=torch.float32)
         tensor = tensor.unsqueeze(0).unsqueeze(0)  # Add batch and channel dims: [1, 1, D, H, W]
-        
+
         # ВАЖНО: После transpose данные стали [D,H,W], поэтому spacing тоже нужно transposed!
         # real_spacing = (H_sp, W_sp, D_sp), после transpose нужен (D_sp, H_sp, W_sp)
         if spacing is not None:
@@ -241,41 +223,41 @@ class UniversalCTInference:
         else:
             # Transpose spacing to match transposed data: (H,W,D) -> (D,H,W)
             current_spacing = (real_spacing[2], real_spacing[0], real_spacing[1])
-        
+
         target_spacing = (1.5, 0.75, 0.75)  # Original target spacing (D, H, W)
-        
+
         if self.verbose:
             if spacing is not None:
                 print(f"   Using override spacing: {current_spacing}")
             else:
                 print(f"   Using real header spacing: {current_spacing}")
             print(f"   Target spacing: {target_spacing}")
-        
+
         # Apply spacing-based resize using the original function
         img_data = resize_array(tensor, current_spacing, target_spacing)
         img_data = img_data[0][0]  # Remove batch and channel dims
         img_data = np.transpose(img_data, (1, 2, 0))  # [H, W, D]
-        
+
         if self.verbose:
             print(f"   After spacing resize: {img_data.shape}")
-        
+
         # Check minimum slices
         if img_data.shape[-1] < min_slices:
             raise ValueError(f"Image has {img_data.shape[-1]} slices, minimum required: {min_slices}")
-        
+
         # STEP 5: Apply original normalization (divide by 1000, not z-score)
         img_data = (img_data / 1000).astype(np.float32)
-        
+
         if self.verbose:
             print(f"   After normalization: {img_data.min():.4f} to {img_data.max():.4f}")
-        
+
         # STEP 6: Convert back to tensor and apply original crop/pad logic
         tensor = torch.tensor(img_data)
-        
+
         # Get the dimensions of the input tensor
         target_final_shape = (480, 480, 240)  # H, W, D
         h, w, d = tensor.shape
-        
+
         # Calculate cropping/padding values for height, width, and depth (like original)
         dh, dw, dd = target_final_shape
         h_start = max((h - dh) // 2, 0)
@@ -284,32 +266,32 @@ class UniversalCTInference:
         w_end = min(w_start + dw, w)
         d_start = max((d - dd) // 2, 0)
         d_end = min(d_start + dd, d)
-        
+
         # Crop or pad the tensor
         tensor = tensor[h_start:h_end, w_start:w_end, d_start:d_end]
-        
+
         pad_h_before = (dh - tensor.size(0)) // 2
         pad_h_after = dh - tensor.size(0) - pad_h_before
-        
+
         pad_w_before = (dw - tensor.size(1)) // 2
         pad_w_after = dw - tensor.size(1) - pad_w_before
-        
+
         pad_d_before = (dd - tensor.size(2)) // 2
         pad_d_after = dd - tensor.size(2) - pad_d_before
-        
+
         # Apply padding with value=-1 (like original)
-        tensor = torch.nn.functional.pad(tensor, 
-                                       (pad_d_before, pad_d_after, pad_w_before, pad_w_after, pad_h_before, pad_h_after), 
-                                       value=-1)
-        
+        tensor = torch.nn.functional.pad(
+            tensor, (pad_d_before, pad_d_after, pad_w_before, pad_w_after, pad_h_before, pad_h_after), value=-1
+        )
+
         # STEP 7: Final permutation to match original format [H, W, D] -> [D, H, W] -> [1, D, H, W]
         tensor = tensor.permute(2, 0, 1)  # [H, W, D] -> [D, H, W]
         final_tensor = tensor.unsqueeze(0)  # Add batch dim: [1, D, H, W]
-        
+
         if self.verbose:
             print(f"   Final tensor shape: {final_tensor.shape}")
             print(f"   Final range: {final_tensor.min():.4f} to {final_tensor.max():.4f}")
-        
+
         return final_tensor
 
     def process_dicom_archive(self, zip_path):
@@ -376,13 +358,13 @@ class UniversalCTInference:
     def predict_pathologies(self, tensor, custom_pathologies=None):
         """
         Run pathology predictions on tensor.
-        
+
         Args:
             tensor: Input tensor
             custom_pathologies: Custom list of pathologies to test
         """
         predictions = {}
-        
+
         # Use custom pathologies if provided, otherwise use default
         pathologies_to_use = custom_pathologies if custom_pathologies is not None else self.pathologies
 
@@ -405,7 +387,6 @@ class UniversalCTInference:
 
                 present_prob = float(probs[0])
 
-                    
                 predictions[pathology] = present_prob
 
         return predictions

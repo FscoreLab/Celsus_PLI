@@ -15,8 +15,6 @@ from transformers import BertModel, BertTokenizer
 from .mlm import MLM
 from .visual_ssl import SimCLR, SimSiam
 
-# helper functions
-
 
 def identity(t, *args, **kwargs):
     return t
@@ -69,9 +67,6 @@ def matrix_diag(t):
     return rearrange(diag_el, "(b d) -> b d", d=num_diag_el)
 
 
-# checkpointing helper function
-
-
 def make_checkpointable(fn):
     @wraps(fn)
     def inner(*args):
@@ -83,9 +78,6 @@ def make_checkpointable(fn):
         return checkpoint(fn, *args)
 
     return inner
-
-
-# keyword argument helpers
 
 
 def pick_and_pop(keys, d):
@@ -116,9 +108,6 @@ def groupby_prefix_and_trim(prefix, d):
     return kwargs_without_prefix, kwargs
 
 
-# helper classes
-
-
 class RearrangeImage(nn.Module):
     def forward(self, x):
         return rearrange(x, "b (h w z) c -> b c h w z", h=h_r, w=w_r)
@@ -146,9 +135,6 @@ class PreNorm(nn.Module):
         return self.fn(self.norm(x), *args, **kwargs)
 
 
-# patch dropout
-
-
 class PatchDropout(nn.Module):
     def __init__(self, prob):
         super().__init__()
@@ -167,9 +153,6 @@ class PatchDropout(nn.Module):
         patch_indices_keep = torch.randn(b, n, device=device).topk(num_patches_keep, dim=-1).indices
 
         return x[batch_indices, patch_indices_keep]
-
-
-# rotary positional embedding
 
 
 class RotaryEmbedding(nn.Module):
@@ -196,9 +179,6 @@ def apply_rotary_pos_emb(freqs, t):
     t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
     t = (t * freqs.cos()) + (rotate_half(t) * freqs.sin())
     return torch.cat((t, t_pass), dim=-1)
-
-
-# transformer
 
 
 class GEGLU(nn.Module):
@@ -319,9 +299,6 @@ class Transformer(nn.Module):
         return self.norm_out(x)
 
 
-# text and vision transformers
-
-
 class TextTransformer(nn.Module):
     def __init__(self, dim, *, num_tokens, max_seq_len, dim_head, rotary_pos_emb=None, causal=False, **kwargs):
         super().__init__()
@@ -395,9 +372,6 @@ class VisionTransformer(nn.Module):
         return torch.cat((cls_tokens, out), dim=1)
 
 
-# contrastive learning functions
-
-
 def model_forward_with_context(
     *,
     fn,
@@ -413,9 +387,6 @@ def model_forward_with_context(
             enc.detach_()
 
     return enc
-
-
-# main clip class
 
 
 class CTCLIP(nn.Module):
@@ -463,9 +434,7 @@ class CTCLIP(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        # assert use_all_token_embeds or (visual_has_cls_token or text_has_cls_token), 'CLS token must be included on both vision and text transformers if you are not using fine-grained contrastive learning loss'
         self.dtype = torch.float32
-        # store some parameters for access
 
         self.dim_text = dim_text
         self.dim_image = dim_image
@@ -474,13 +443,11 @@ class CTCLIP(nn.Module):
         self.image_channels = channels
         self.image_size = visual_image_size
 
-        # instantiate text transformer
-
         self.text_pad_id = text_pad_id
         self.text_has_cls_token = text_has_cls_token
         self.text_seq_len = text_seq_len
 
-        self.text_encode_without_mask = text_encode_without_mask  # whether to pass in text mask to text encoder
+        self.text_encode_without_mask = text_encode_without_mask
 
         self.text_causal_mask = text_causal_mask
         self.text_eos_id = text_eos_id
@@ -504,8 +471,6 @@ class CTCLIP(nn.Module):
                 checkpoint_during_training=checkpoint_during_training,
             )
 
-        # instantiate image transformer
-
         self.visual_has_cls_token = visual_has_cls_token
 
         if exists(image_encoder):
@@ -523,16 +488,12 @@ class CTCLIP(nn.Module):
                 checkpoint_during_training=checkpoint_during_training,
             )
 
-        # text ssl
-
         self.use_mlm = use_mlm
         self.text_ssl_loss_weight = text_ssl_loss_weight if use_mlm else 0
 
         if use_mlm:
             mlm_kwargs, kwargs = groupby_prefix_and_trim("mlm_", kwargs)
             self.mlm = MLM(self.text_transformer, dim=dim_text, num_tokens=num_text_tokens, **mlm_kwargs)
-
-        # image ssl
 
         self.use_visual_ssl = use_visual_ssl or exists(visual_ssl)
         self.image_ssl_loss_weight = image_ssl_loss_weight if use_visual_ssl else 0
@@ -553,11 +514,7 @@ class CTCLIP(nn.Module):
                     self.visual_transformer, image_size=visual_image_size, hidden_layer=visual_ssl_hidden_layer
                 )
 
-        # text latent projection
-
         self.to_text_latent = nn.Linear(dim_text, dim_latent, bias=False)
-
-        # image latent projection
 
         if downsample_image_embeds:
             # assert use_all_token_embeds, 'must be using all token embeds for contrastive learning in order to downsampling'
@@ -572,17 +529,12 @@ class CTCLIP(nn.Module):
         else:
             self.to_visual_latent = nn.Linear(dim_image, dim_latent, bias=False)
 
-        # temperature
-
         self.temperature = nn.Parameter(torch.tensor(1.0))
 
-        # from https://arxiv.org/abs/2111.07783 (FILIP paper)
         self.use_all_token_embeds = use_all_token_embeds
 
-        # proposed in https://arxiv.org/abs/2110.06848 (DCL) and https://arxiv.org/abs/2110.11316 (CLOOB)
         self.decoupled_contrastive_learning = decoupled_contrastive_learning
 
-        # proposed in https://arxiv.org/abs/2110.11316 (CLOOB)
         self.extra_latent_projection = extra_latent_projection
 
         self.to_text_latent_extra = copy.deepcopy(self.to_text_latent)
@@ -591,7 +543,6 @@ class CTCLIP(nn.Module):
 
         self.multiview_loss_weight = multiview_loss_weight
 
-        # Use cached tokenizer to avoid repeated downloads
         if not hasattr(CTCLIP, "_cached_tokenizer"):
             CTCLIP._cached_tokenizer = BertTokenizer.from_pretrained(
                 "microsoft/BiomedVLP-CXR-BERT-specialized", do_lower_case=True
@@ -654,10 +605,6 @@ class CTCLIP(nn.Module):
         image_ssl_loss = 0
 
         if return_loss:
-            # print("-----------")
-            # print(text.input_ids.shape)
-            # print(text.attention_mask.shape)
-            # print("------------")
             text_ssl_loss = self.mlm(text.input_ids, attention_mask=text.attention_mask) if self.use_mlm else 0
             image_ssl_loss = self.visual_ssl(image) if self.use_visual_ssl else 0
 
@@ -687,13 +634,10 @@ class CTCLIP(nn.Module):
             image = torch.cat((image, aug_image), dim=0)
 
         is_multiview = num_batch_texts > 1 or num_batch_images > 1
-        # assert not (return_loss and not self.training), 'loss cannot be used if not training'
         assert not (not return_loss and is_multiview), "do not pass in augmented texts or images if not training"
         assert not (
             self.multiview_loss_weight == 0 and is_multiview
         ), "multiview loss weight cannot be 0 if augmented text or images passed in"
-
-        # get encoded text
 
         text_args = (text.input_ids, text.attention_mask)
 
@@ -702,8 +646,6 @@ class CTCLIP(nn.Module):
 
         text_embeddings = self.text_transformer(text.input_ids, attention_mask=text.attention_mask)
         enc_text = text_embeddings[0]
-
-        # depending on whether text is using causal mask, post process, moving eos token to the first position
 
         if self.text_causal_mask:
             eos_text_mask = text == self.text_eos_id
@@ -724,48 +666,19 @@ class CTCLIP(nn.Module):
             rest_tokens = rearrange(rest_tokens, "(b n d) -> b n d", b=b, n=text_len - 1)
             enc_text = torch.cat((eos_tokens, rest_tokens), dim=1)
 
-        # whether to train image encoder, in the case that the image net was pretrained as recommended in LiT
-
-        """enc_image = model_forward_with_context(
-            fn = self.visual_transformer,
-            args = (image,),
-            freeze = freeze_image_encoder
-        )"""
-
         enc_image = self.visual_transformer(image, return_encoded_tokens=True)
 
-        # print("This is visual encoding")
         global h_r, w_r, z_r
         h_r, w_r, z_r = enc_image.shape[1], enc_image.shape[2], enc_image.shape[3]
 
-        # enc_image, max_indices = torch.max(enc_image, dim=1)
         enc_image_send = enc_image
 
         enc_image = torch.mean(enc_image, dim=1)
 
-        # kernel_size = (enc_image.size(1), enc_image.size(2), enc_image.size(3))
-
-        # enc_image = enc_image.permute(0,4,1,2,3)
-        # Perform max pooling over dimensions 1, 2, and 3
-        # enc_image = F.max_pool3d(enc_image, kernel_size=kernel_size)
-
-        # enc_image = enc_image.permute(0,2,3,4,1)
-
-        # print(enc_image.shape, flush=True)
-        # enc_image = enc_image[:,0,:]
-        # print(enc_image.shape, flush=True)
-        # print("test all pooling")
-
         enc_image = enc_image.view(enc_image.shape[0], -1)
-
-        # print(enc_image.shape, flush=True)
-
-        # early return of encodings, if needed (for DALL-E2)
 
         if return_encodings:
             return enc_text, enc_image
-
-        # depending on whether to do fine-grained CLIP or not, select either all tokens, or CLS tokens only
 
         if self.use_all_token_embeds:
             assert enc_text.ndim == 3, "encoded text must have 3 dimensions (batch, seq, features)"
@@ -776,19 +689,13 @@ class CTCLIP(nn.Module):
             text_embeds = enc_text[:, :] if enc_text.ndim == 3 else enc_text
             image_embeds = enc_image[:, :] if enc_image.ndim == 3 else enc_image
 
-        # project to latents
-        # text_embeds = text_embeds.view(text_embeds.shape[0], -1)
         text_embeds = text_embeds[:, 0, :]
 
-        # text_embeds = torch.mean(text_embeds, dim=1)
         text_latents = self.to_text_latent(text_embeds)
 
         image_latents = self.to_visual_latent(image_embeds)
 
         text_latents, image_latents = map(l2norm, (text_latents, image_latents))
-
-        # calculate another set of latents for image to text (vs text to image)
-        # proposed by CLOOB
 
         text_latents_extra, image_latents_extra = text_latents, image_latents
         if self.extra_latent_projection:
@@ -796,19 +703,13 @@ class CTCLIP(nn.Module):
             image_latents_extra = self.to_visual_latent_extra(image_embeds)
             text_latents_extra, image_latents_extra = map(l2norm, (text_latents_extra, image_latents_extra))
 
-        # whether to early return latents
-
         if return_latents:
             if self.extra_latent_projection:
                 return text_latents, image_latents, text_latents_extra, image_latents_extra
 
             return text_latents, image_latents, enc_image_send
 
-        # get temperature
-
         temp = self.temperature.exp()
-
-        # early return, if needed
 
         if not return_loss and self.use_all_token_embeds:
             einsum_args = (
@@ -826,25 +727,12 @@ class CTCLIP(nn.Module):
             )
             return einsum("b d, b d -> b", *einsum_args) * temp
 
-        # split out multiview dimension for text and images
-
         text_latents = rearrange(text_latents, "(m b) ... -> m b ...", m=num_batch_texts)
         image_latents = rearrange(image_latents, "(m b) ... -> m b ...", m=num_batch_images)
 
         if self.extra_latent_projection:
             text_latents_extra = rearrange(text_latents_extra, "(m b) ... -> m b ...", m=num_batch_texts)
             image_latents_extra = rearrange(image_latents_extra, "(m b) ... -> m b ...", m=num_batch_images)
-
-        # contrastive loss
-
-        """
-        m - num batches of text (for multiview)
-        n - num batches of images (for multiview)
-        x - batches of text
-        y - batches of images
-        t - sequence dimension along text tokens
-        i - sequence dimension along image tokens
-        """
 
         if self.use_all_token_embeds:
             # fine-grained CLIP logic
@@ -870,18 +758,12 @@ class CTCLIP(nn.Module):
             if self.extra_latent_projection:
                 image_to_text = einsum("m t d, n i d -> m n i t", text_latents_extra, image_latents_extra) * temp
 
-        # calculate loss
-
         text_to_image = rearrange(text_to_image, "m n ... -> (m n) ...")
         image_to_text = rearrange(image_to_text, "m n ... -> (m n) ...")
 
-        # exponentiate
         text_to_image_exp, image_to_text_exp = map(torch.exp, (text_to_image, image_to_text))
 
-        # numerators
         text_to_image_pos, image_to_text_pos = map(matrix_diag, (text_to_image_exp, image_to_text_exp))
-
-        # denominator
 
         if self.decoupled_contrastive_learning:
             pos_mask = torch.eye(b, device=device, dtype=torch.bool)
@@ -891,24 +773,14 @@ class CTCLIP(nn.Module):
 
         text_to_image_denom, image_to_text_denom = map(lambda t: t.sum(dim=-1), (text_to_image_exp, image_to_text_exp))
 
-        # loss
-
         text_to_image_loss = (-log(text_to_image_pos) + log(text_to_image_denom)).mean(dim=-1)
         image_to_text_loss = (-log(image_to_text_pos) + log(image_to_text_denom)).mean(dim=-1)
 
-        # calculate CL loss
-
         cl_losses = (text_to_image_loss + image_to_text_loss) / 2
-
-        # get main CL loss vs multiview CL losses
 
         cl_loss, multiview_cl_loss = cl_losses[0], cl_losses[1:]
 
-        # if no augmented text or images passed in, multiview loss weight is 0
-
         multiview_loss_weight = self.multiview_loss_weight if is_multiview else 0
-
-        # calculate weights
 
         cl_loss_weight = 1 - (self.text_ssl_loss_weight + self.image_ssl_loss_weight + multiview_loss_weight)
 
@@ -917,8 +789,6 @@ class CTCLIP(nn.Module):
             + (text_ssl_loss * self.text_ssl_loss_weight)
             + (image_ssl_loss * self.image_ssl_loss_weight)
         )
-
-        # add multiview CL loss with weight
 
         if is_multiview:
             loss = loss + multiview_cl_loss.mean() * multiview_loss_weight

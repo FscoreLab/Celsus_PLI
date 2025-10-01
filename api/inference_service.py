@@ -27,13 +27,12 @@ import torch.nn.functional as F
 from transformers import BertModel, BertTokenizer
 
 from CT_CLIP.ct_clip.ct_clip import CTCLIP
-from mosmed_multilabel_trainer import SimpleCTCLIPClassifier
+from ct_clip_classifier import SimpleCTCLIPClassifier
 from scripts.universal_ct_inference import UniversalCTInference
 from transformer_maskgit.transformer_maskgit.ctvit import CTViT
 
 logger = logging.getLogger(__name__)
 
-# Патологии для CT-CLIP модели
 CTCLIP_PATHOLOGIES = [
     "Pathological finding",
     "Pulmonary nodule",
@@ -111,10 +110,8 @@ MOSMED_PATHOLOGIES = [
 class DICOMValidator:
     """Валидация и обработка поврежденных/неполных DICOM файлов."""
 
-    # Минимальное количество срезов для обработки
     MIN_SLICES = 20
 
-    # Обязательные теги для CT исследования
     REQUIRED_TAGS = [
         "StudyInstanceUID",
         "SeriesInstanceUID",
@@ -122,7 +119,6 @@ class DICOMValidator:
         "Modality",
     ]
 
-    # Теги для проверки целостности изображения
     IMAGE_TAGS = [
         "Rows",
         "Columns",
@@ -162,7 +158,6 @@ class DICOMValidator:
             "metadata": None,
         }
 
-        # 1. Проверка читаемости файла
         try:
             if check_pixels:
                 dcm = pydicom.dcmread(file_path, force=True)
@@ -172,7 +167,6 @@ class DICOMValidator:
             result["errors"].append(f"Невозможно прочитать файл: {str(e)}")
             return result
 
-        # 2. Проверка наличия обязательных тегов
         missing_required = []
         for tag in DICOMValidator.REQUIRED_TAGS:
             if not hasattr(dcm, tag):
@@ -183,13 +177,11 @@ class DICOMValidator:
             result["missing_tags"] = missing_required
             return result
 
-        # 3. Проверка модальности (должна быть CT)
         if hasattr(dcm, "Modality"):
             modality = str(dcm.Modality).upper()
             if modality != "CT":
                 result["warnings"].append(f"Модальность {modality}, ожидалась CT")
 
-        # 4. Проверка наличия и читаемости pixel data
         if check_pixels:
             missing_image = []
             for tag in DICOMValidator.IMAGE_TAGS:
@@ -199,14 +191,12 @@ class DICOMValidator:
             if missing_image:
                 result["warnings"].append(f"Отсутствуют теги изображения: {', '.join(missing_image)}")
             else:
-                # Пытаемся прочитать pixel data
                 try:
                     pixel_array = dcm.pixel_array
                     if pixel_array is None or pixel_array.size == 0:
                         result["errors"].append("PixelData пуст")
                         return result
 
-                    # Проверяем соответствие размеров
                     expected_shape = (int(dcm.Rows), int(dcm.Columns))
                     if pixel_array.shape[:2] != expected_shape:
                         result["warnings"].append(
@@ -216,7 +206,6 @@ class DICOMValidator:
                     result["errors"].append(f"Ошибка чтения pixel data: {str(e)}")
                     return result
 
-        # 5. Извлекаем метаданные
         result["metadata"] = {
             "study_uid": str(dcm.StudyInstanceUID),
             "series_uid": str(dcm.SeriesInstanceUID),
@@ -226,7 +215,6 @@ class DICOMValidator:
             "slice_location": float(dcm.SliceLocation) if hasattr(dcm, "SliceLocation") else None,
         }
 
-        # Файл валиден, если нет критических ошибок
         result["valid"] = len(result["errors"]) == 0
         result["can_process"] = result["valid"]
 
@@ -275,7 +263,6 @@ class DICOMValidator:
             result["errors"].append("Пустой список DICOM файлов")
             return result
 
-        # Проверяем каждый файл
         for file_path in dicom_paths:
             validation = DICOMValidator.validate_dicom_file(file_path, check_pixels=check_pixels)
 
@@ -288,7 +275,6 @@ class DICOMValidator:
                     {"file": file_path, "errors": validation["errors"], "warnings": validation["warnings"]}
                 )
 
-        # Проверяем минимальное количество срезов
         if result["num_valid"] < DICOMValidator.MIN_SLICES:
             result["errors"].append(
                 f"Недостаточно валидных срезов: {result['num_valid']}, требуется минимум {DICOMValidator.MIN_SLICES}"
@@ -298,7 +284,6 @@ class DICOMValidator:
             result["can_process"] = True
             result["valid"] = True
 
-        # Логируем поврежденные файлы
         if result["num_corrupted"] > 0:
             result["warnings"].append(f"Пропущено {result['num_corrupted']} поврежденных файлов")
 
@@ -352,19 +337,19 @@ class DICOMSeriesSelector:
         dicom_files = []
         total_files = 0
         corrupted_count = 0
-        
+
         for root, _, files in os.walk(extract_dir):
             for file in files:
                 # Пропускаем системные файлы
-                if file.startswith('.') or file.endswith(('.txt', '.pdf', '.jpg', '.png')):
+                if file.startswith(".") or file.endswith((".txt", ".pdf", ".jpg", ".png")):
                     continue
-                    
+
                 file_path = os.path.join(root, file)
                 total_files += 1
-                
+
                 # Используем валидатор для проверки файла
                 validation = DICOMValidator.validate_dicom_file(file_path, check_pixels=False)
-                
+
                 if validation["can_process"]:
                     dicom_files.append(file_path)
                 else:
@@ -414,7 +399,7 @@ class DICOMSeriesSelector:
 
             # Валидируем серию
             validation = DICOMValidator.validate_series(dicom_paths, check_pixels=False)
-            
+
             # Пропускаем серии с недостаточным количеством валидных срезов
             if not validation["can_process"]:
                 logger.info(
@@ -427,7 +412,7 @@ class DICOMSeriesSelector:
 
             # Используем только валидные файлы
             valid_paths = validation["valid_files"]
-            
+
             # Читаем первый валидный файл для анализа
             try:
                 dcm = pydicom.dcmread(valid_paths[0], stop_before_pixels=True, force=True)
@@ -754,7 +739,7 @@ class DiffusionClassifierInference:
                 min_dim = min(h, w)
                 top = (h - min_dim) // 2
                 left = (w - min_dim) // 2
-                slice_tensor = slice_tensor[:, top:top+min_dim, left:left+min_dim]
+                slice_tensor = slice_tensor[:, top : top + min_dim, left : left + min_dim]
                 if min_dim != self.image_size:
                     slice_tensor = F.interpolate(
                         slice_tensor.unsqueeze(0),
@@ -825,12 +810,8 @@ class DiffusionReconstructionInference:
             sys.path.insert(0, diffusion_path)
 
         from diffusion_anomaly.gaussian_diffusion import (
-            GaussianDiffusion,
-            LossType,
-            ModelMeanType,
-            ModelVarType,
-            get_named_beta_schedule,
-        )
+            GaussianDiffusion, LossType, ModelMeanType, ModelVarType,
+            get_named_beta_schedule)
         from diffusion_anomaly.unet import UNetModel
 
         # Создаем UNet модель
@@ -908,7 +889,7 @@ class DiffusionReconstructionInference:
                 min_dim = min(h, w)
                 top = (h - min_dim) // 2
                 left = (w - min_dim) // 2
-                slice_tensor = slice_tensor[:, top:top+min_dim, left:left+min_dim]
+                slice_tensor = slice_tensor[:, top : top + min_dim, left : left + min_dim]
                 if min_dim != self.image_size:
                     slice_tensor = F.interpolate(
                         slice_tensor.unsqueeze(0),
@@ -1242,11 +1223,11 @@ class LightGBMInferenceService:
         self.supervised_inference = SupervisedModelInference(supervised_model_path, device)
         self.ctclip_inference = UniversalCTInference(model_path=ctclip_model_path, device=device, verbose=False)
         self.lightgbm_inference = LightGBMInference(lightgbm_model_path, optimal_threshold)
-        
+
         # Инициализируем diffusion модели если пути указаны
         self.diffusion_classifier_inference = None
         self.diffusion_reconstruction_inference = None
-        
+
         if self.use_diffusion:
             logger.info("Инициализация diffusion моделей...")
             self.diffusion_classifier_inference = DiffusionClassifierInference(
@@ -1254,7 +1235,7 @@ class LightGBMInferenceService:
                 device=device,
                 image_size=256,
             )
-            
+
             if diffusion_unet_path:
                 self.diffusion_reconstruction_inference = DiffusionReconstructionInference(
                     diffusion_model_path=diffusion_unet_path,
@@ -1338,20 +1319,20 @@ class LightGBMInferenceService:
             # 3. Diffusion модели (если включены)
             diffusion_classifier_preds = None
             diffusion_reconstruction_scores = None
-            
+
             if self.use_diffusion and self.diffusion_classifier_inference:
                 logger.info("Загружаем diffusion classifier...")
                 self.diffusion_classifier_inference.load_model()
                 diffusion_classifier_preds = self.diffusion_classifier_inference.predict(nifti_file)
                 logger.info(f"Diffusion classifier predictions: {diffusion_classifier_preds}")
-                
+
                 # Diffusion reconstruction (если включена)
                 if self.diffusion_reconstruction_inference:
                     logger.info("Загружаем diffusion reconstruction...")
                     self.diffusion_reconstruction_inference.load_model()
                     diffusion_reconstruction_scores = self.diffusion_reconstruction_inference.predict(nifti_file)
                     logger.info(f"Diffusion reconstruction scores: {diffusion_reconstruction_scores}")
-                    
+
                     # Выгружаем reconstruction UNet (classifier остается)
                     if self.diffusion_reconstruction_inference.diffusion_model:
                         del self.diffusion_reconstruction_inference.diffusion_model
@@ -1360,7 +1341,7 @@ class LightGBMInferenceService:
                         self.diffusion_reconstruction_inference.diffusion = None
                         torch.cuda.empty_cache()
                     logger.info("Diffusion reconstruction модель выгружена")
-                
+
                 # Выгружаем classifier
                 if self.diffusion_classifier_inference.model:
                     del self.diffusion_classifier_inference.model
@@ -1398,7 +1379,7 @@ class LightGBMInferenceService:
                 "ctclip_probabilities": ctclip_preds,
                 "top_shap_features": lgbm_result["top_shap_features"],
             }
-            
+
             # Добавляем diffusion результаты если есть
             if diffusion_classifier_preds:
                 result["diffusion_classifier"] = diffusion_classifier_preds
