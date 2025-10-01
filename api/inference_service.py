@@ -787,7 +787,7 @@ class DiffusionReconstructionInference:
         classifier_model: "DiffusionClassifierInference",
         device: str = "cuda",
         image_size: int = 256,
-        classifier_scale: float = 100.0,
+        classifier_scale: float = 200.0,
         noise_level: int = 500,
         num_inference_steps: int = 20,
     ):
@@ -1216,7 +1216,7 @@ class LightGBMInferenceService:
         device: str = "cuda",
         diffusion_classifier_path: str = None,
         diffusion_unet_path: str = None,
-        classifier_scale: float = 100.0,
+        classifier_scale: float = 200.0,
     ):
         self.supervised_model_path = supervised_model_path
         self.ctclip_model_path = ctclip_model_path
