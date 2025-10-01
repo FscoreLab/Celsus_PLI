@@ -85,6 +85,9 @@ CTCLIP_PATHOLOGIES = [
     "Postoperative changes (lobectomy or pneumonectomy)",
     "Scoliosis",
     "Pectus excavatum or carinatum",
+    "Degenerative spine changes",
+    "Thyroid nodule",
+    "Breast mass",
     "Other pathology",
 ]
 
@@ -1275,6 +1278,7 @@ class LightGBMInferenceService:
         diffusion_classifier_path: str = None,
         diffusion_unet_path: str = None,
         classifier_scale: float = 200.0,
+        use_diffusion_reconstruction: bool = False, 
         # FVLM параметры
         fvlm_model_path: str = None,
         fvlm_mae_weights_path: str = None,
@@ -1287,6 +1291,7 @@ class LightGBMInferenceService:
         self.device = device
         self.use_diffusion = diffusion_classifier_path is not None
         self.use_fvlm = fvlm_model_path is not None
+        self.use_diffusion_reconstruction = use_diffusion_reconstruction
 
         self.supervised_inference = SupervisedModelInference(supervised_model_path, device)
         self.ctclip_inference = UniversalCTInference(model_path=ctclip_model_path, device=device, verbose=False)
@@ -1304,7 +1309,7 @@ class LightGBMInferenceService:
                 image_size=256,
             )
 
-            if diffusion_unet_path:
+            if diffusion_unet_path and self.use_diffusion_reconstruction:
                 self.diffusion_reconstruction_inference = DiffusionReconstructionInference(
                     diffusion_model_path=diffusion_unet_path,
                     classifier_model=self.diffusion_classifier_inference,
@@ -1425,8 +1430,7 @@ class LightGBMInferenceService:
                 diffusion_classifier_preds = self.diffusion_classifier_inference.predict(nifti_file)
                 logger.info(f"Diffusion classifier predictions: {diffusion_classifier_preds}")
 
-                # Diffusion reconstruction (если включена)
-                if self.diffusion_reconstruction_inference:
+                if self.diffusion_reconstruction_inference and self.use_diffusion_reconstruction:
                     logger.info("Загружаем diffusion reconstruction...")
                     self.diffusion_reconstruction_inference.load_model()
                     diffusion_reconstruction_scores = self.diffusion_reconstruction_inference.predict(nifti_file)
