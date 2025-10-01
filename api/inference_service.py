@@ -25,6 +25,8 @@ import shap
 import torch
 import torch.nn.functional as F
 from transformers import BertModel, BertTokenizer
+from typing import Dict, Optional, Union
+from mednext.inference import init_model, predict_single_volume
 
 from CT_CLIP.ct_clip.ct_clip import CTCLIP
 from ct_clip_classifier import SimpleCTCLIPClassifier
@@ -1008,6 +1010,21 @@ class LightGBMInference:
         self.supervised_pathologies = MOSMED_PATHOLOGIES
         self.ctclip_pathologies = CTCLIP_PATHOLOGIES
 
+
+    @staticmethod
+    def _ensure_prefixed(d: Dict[str, float], prefix: str) -> Dict[str, float]:
+        """Возвращает dict с гарантированным префиксом у ключей."""
+        if not d:
+            return {}
+        prefixed = {}
+        for k, v in d.items():
+            if k.startswith(prefix):
+                prefixed[k] = float(v)
+            else:
+                prefixed[f"{prefix}{k}"] = float(v)
+        return prefixed
+
+
     def load_model(self):
         """Загружает LightGBM модель."""
         logger.info(f"Загружаем LightGBM модель из {self.model_path}...")
@@ -1033,6 +1050,8 @@ class LightGBMInference:
         ctclip_probs: Dict[str, float],
         diffusion_classifier_probs: Dict[str, float] = None,
         diffusion_reconstruction_scores: Dict[str, float] = None,
+        mednext_preds: Optional[Dict[str, float]] = None,
+        fvlm_preds: Optional[Dict[str, float]] = None,
     ) -> pd.DataFrame:
         """
         Подготавливает фичи для LightGBM из предсказаний всех моделей.
@@ -1047,6 +1066,8 @@ class LightGBMInference:
             Предсказания diffusion classifier (mean, max, std)
         diffusion_reconstruction_scores : dict, optional
             Anomaly scores от diffusion reconstruction (mean, max, std)
+        mednext_preds: dict (str, float)
+            classification scores for 22 classes including "normal" (no pathology)
 
         Returns
         -------
@@ -1065,9 +1086,24 @@ class LightGBMInference:
             feature_name = f"ctclip_{pathology}"
             features[feature_name] = ctclip_probs.get(feature_name, 0.0)
 
+        if mednext_preds:
+            mednext_norm = self._ensure_prefixed(mednext_preds, "kolyan_")
+            for k, v in mednext_norm.items():
+                features[k] = float(v)
+
+        if fvlm_preds:
+            fvlm_norm = self._ensure_prefixed(fvlm_preds, "okhr_")
+            for k, v in fvlm_norm.items():
+                features[k] = float(v)
+
+        def _collect(prefix: str) -> List[float]:
+            return [v for k, v in features.items() if k.startswith(prefix)]
+
         # Вычисляем агрегированные фичи
         supervised_values = [features[f"supervised_{p}"] for p in self.supervised_pathologies]
         ctclip_values = [features[f"ctclip_{p}"] for p in self.ctclip_pathologies]
+        mednext_vals = _collect("kolyan_") # TODO integrate further
+        fvlm_vals = _collect("okhr_")  # TODO integrate further
 
         features["supervised_mean_probability"] = np.mean(supervised_values)
         features["ctclip_mean_probability"] = np.mean(ctclip_values)
@@ -1075,6 +1111,8 @@ class LightGBMInference:
         features["ctclip_max_probability"] = np.max(ctclip_values)
         features["supervised_top3_mean"] = np.mean(sorted(supervised_values, reverse=True)[:3])
         features["ctclip_top3_mean"] = np.mean(sorted(ctclip_values, reverse=True)[:3])
+
+
 
         # Добавляем diffusion classifier фичи если есть
         if diffusion_classifier_probs:
@@ -1265,8 +1303,89 @@ class FVLMInferenceService:
         return results
 
 
+class MedNeXtInferenceService:
+    """
+    Service wrapper for MedNeXt 3D classifier inference.
+
+    Features:
+    - Lazy model loading/unloading (GPU memory friendly).
+    - Single-volume predict (supports .nii/.nii.gz and DICOM .zip via your helper).
+    - CSV-manifest inference with resume, batching, and data_root handling.
+    - Context manager support.
+    """
+
+    def __init__(self,
+        device: str = "cuda",
+        # Optional defaults: if omitted, your init_model() will use DEFAULT_* constants.
+    ):
+
+        self.device = device
+
+        self.artifacts = None  # type: Optional[InferenceArtifacts]
+
+        logger.info(f"MedNeXt device: {self.device}")
+
+    def load_model(self) -> None:
+        """
+        Loads model and preprocessing pipeline into memory (idempotent).
+        If custom config/weights were passed, temporarily patch DEFAULT_* before init.
+        """
+        if self.artifacts is not None:
+            return
+
+        logger.info("Loading MedNeXt model...")
+        self.artifacts = init_model(device=self.device)
+
+        logger.info("✅ MedNeXt model loaded")
+
+    def unload_model(self) -> None:
+        """
+        Unloads model and frees GPU memory (idempotent).
+        """
+        if self.artifacts is None:
+            return
+        try:
+            if hasattr(self.artifacts, "model") and self.artifacts.model is not None:
+                del self.artifacts.model
+        finally:
+            self.artifacts = None
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+            logger.info("MedNeXt model unloaded")
+
+    def __enter__(self):
+        self.load_model()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.unload_model()
+
+    @property
+    def classes(self):
+        if self.artifacts is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+        return list(self.artifacts.classes)
+
+
+    def predict(self, volume_path: Union[str, Path]) -> Dict[str, float]:
+        """
+        Run inference on a single volume (NIfTI or DICOM ZIP).
+        Returns: {class_name: probability}
+        """
+        if self.artifacts is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        volume_path = str(volume_path)
+        logger.info(f"Running MedNeXt inference for: {volume_path}")
+        out = predict_single_volume(volume_path, self.artifacts)
+        logger.info(f"✅ Inference done for {volume_path}")
+        return out
+
+
 class LightGBMInferenceService:
-    """Сервис для полного инференса: Supervised + CT-CLIP + Diffusion + FVLM + LightGBM."""
+    """Сервис для полного инференса: Supervised + CT-CLIP + Diffusion + FVLM + MedNext + LightGBM."""
 
     def __init__(
         self,
@@ -1284,6 +1403,8 @@ class LightGBMInferenceService:
         fvlm_mae_weights_path: str = None,
         fvlm_bert_path: str = None,
         fvlm_config_path: str = None,
+        # MedNext
+        use_mednext: bool = True,
     ):
         self.supervised_model_path = supervised_model_path
         self.ctclip_model_path = ctclip_model_path
@@ -1292,6 +1413,7 @@ class LightGBMInferenceService:
         self.use_diffusion = diffusion_classifier_path is not None
         self.use_fvlm = fvlm_model_path is not None
         self.use_diffusion_reconstruction = use_diffusion_reconstruction
+        self.use_mednext = use_mednext
 
         self.supervised_inference = SupervisedModelInference(supervised_model_path, device)
         self.ctclip_inference = UniversalCTInference(model_path=ctclip_model_path, device=device, verbose=False)
@@ -1339,6 +1461,15 @@ class LightGBMInferenceService:
                     device=device,
                 )
                 logger.info("FVLM inference инициализирован")
+
+        # MedNeXt
+        self.mednext_inference = None
+        if self.use_mednext:
+            logger.info("Инициализация MedNeXt...")
+            self.mednext_inference = MedNeXtInferenceService(
+                device=device,
+            )
+            logger.info("MedNeXt inference инициализирован")
 
 
     def process_zip_archive(self, zip_path: str) -> Dict:
@@ -1420,7 +1551,20 @@ class LightGBMInferenceService:
                 torch.cuda.empty_cache()
             logger.info("CT-CLIP модель выгружена")
 
-            # 4. Diffusion модели (если включены)
+            # 4. MedNext
+            mednext_preds = None
+            if self.use_mednext and self.mednext_inference is not None:
+                logger.info("Загружаем MedNeXt модель...")
+                self.mednext_inference.load_model()
+                # Note: MedNeXt supports both NIfTI and DICOM ZIP; here we already have NIfTI path.
+                raw_probs = self.mednext_inference.predict(nifti_file)  # {class: prob}
+                # Prefix features to avoid collisions and make columns explicit
+                mednext_preds = {f"mednext_{cls}": float(prob) for cls, prob in raw_probs.items()}
+                self.mednext_inference.unload_model()
+                logger.info("MedNeXt модель выгружена")
+
+
+            # 5. Diffusion модели (если включены)
             diffusion_classifier_preds = None
             diffusion_reconstruction_scores = None
 
@@ -1452,7 +1596,7 @@ class LightGBMInferenceService:
                     torch.cuda.empty_cache()
                 logger.info("Diffusion classifier выгружен")
 
-            # 5. LightGBM модель
+            # 6. LightGBM модель
             logger.info("Загружаем LightGBM модель...")
             self.lightgbm_inference.load_model()
 
@@ -1462,6 +1606,7 @@ class LightGBMInferenceService:
                 ctclip_preds,
                 diffusion_classifier_preds,
                 diffusion_reconstruction_scores,
+                mednext_preds=mednext_preds,
             )
 
             # Делаем предсказание
@@ -1481,3 +1626,5 @@ class LightGBMInferenceService:
             }
 
             return result
+
+
