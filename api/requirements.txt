@@ -1,0 +1,29 @@
+# FastAPI and web server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Core ML libraries
+torch==2.8.0
+torchvision==0.23.0
+transformers==4.56.2
+
+# Data processing
+numpy==2.2.6
+pandas==2.3.0
+scikit-learn==1.7.2
+joblib>=1.2.0
+lightgbm>=4.0.0
+shap>=0.42.0
+openpyxl>=3.0.0 
+tqdm>=4.65.0
+requests>=2.31.0
+
+# Medical imaging
+nibabel>=3.2.2
+pydicom>=2.3.0
+dicom2nifti>=2.4.8
+
+# Additional dependencies
+vector-quantize-pytorch==1.1.2
+ema-pytorch==0.7.7

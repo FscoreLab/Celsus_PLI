@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  ct-clip-api:
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    container_name: ct-clip-inference
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPERVISED_MODEL_PATH=/app/models/CT_CLIP_Supervised_finetune_Zheka.pt
+      - CTCLIP_MODEL_PATH=/app/models/CT_VocabFine_v2.pt
+      - LIGHTGBM_MODEL_PATH=/app/models/lightgbm_model.pkl
+      - OPTIMAL_THRESHOLD=0.4
+      - DEVICE=cuda
+      # Diffusion models (optional, закомментируйте если не используете)
+      - DIFFUSION_CLASSIFIER_PATH=/app/models/ct_classifier_004000.pt
+      - DIFFUSION_UNET_PATH=/app/models/diffusion_checkpoint_step_1000.pt
+      - CLASSIFIER_SCALE=100.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - /tmp:/tmp  # Для временных файлов
+      - ../best_models:/app/models  # Монтируем директорию с моделями
+    restart: unless-stopped

@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+logs/
+
+# Test files
+test_*.py
+*_test.py
+
+# Documentation
+*.md
+
+# Data files (не нужны в образе)
+*.nii.gz
+*.dcm
+*.zip
+*.csv
+*.json
+
+# Models (копируются отдельно)
+*.pt
+*.pth
+
+# Results  
+results/
+output/
