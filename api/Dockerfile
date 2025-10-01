@@ -26,6 +26,9 @@ RUN cd /app/CT_CLIP && pip3 install -e .
 # Устанавливаем transformer_maskgit как пакет
 RUN cd /app/transformer_maskgit && pip3 install -e .
 
+# Устанавливаем fvlm как пакет
+RUN pip3 install -e fvlm
+
 # Создаем директорию для моделей
 RUN mkdir -p /app/models
 
@@ -33,6 +36,8 @@ RUN mkdir -p /app/models
 COPY best_models/supervised_model.pt /app/models/
 COPY best_models/CT_VocabFine_v2.pt /app/models/
 COPY lightgbm_results/final_lightgbm_model.pkl /app/models/
+
+COPY fvlm/weights /app/models/fvlm/
 
 # Порт для API
 EXPOSE 8000
@@ -42,6 +47,11 @@ ENV SUPERVISED_MODEL_PATH=/app/models/supervised_model.pt
 ENV CTCLIP_MODEL_PATH=/app/models/CT_VocabFine_v2.pt
 ENV LIGHTGBM_MODEL_PATH=/app/models/final_lightgbm_model.pkl
 ENV OPTIMAL_THRESHOLD=0.5
+
+ENV FVLM_MODEL_PATH=/app/models/fvlm/fvlm_model.pth
+ENV FVLM_MAE_WEIGHTS_PATH=/app/models/fvlm/mae_pretrain_vit_base.pth
+ENV FVLM_BERT_PATH=/app/models/fvlm/BiomedVLP-CXR-BERT-specialized
+
 ENV DEVICE=cuda
 ENV PYTHONPATH=/app:$PYTHONPATH
 

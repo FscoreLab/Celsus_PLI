@@ -18,6 +18,10 @@ services:
       - DIFFUSION_CLASSIFIER_PATH=/app/models/ct_classifier_004000.pt
       - DIFFUSION_UNET_PATH=/app/models/diffusion_checkpoint_step_4000.pt
       - CLASSIFIER_SCALE=100.0
+      # FVLM модели
+      - FVLM_MODEL_PATH=/app/models/fvlm/fvlm_model.pth
+      - FVLM_MAE_WEIGHTS_PATH=/app/models/fvlm/mae_pretrain_vit_base.pth
+      - FVLM_BERT_PATH=/app/models/fvlm/BiomedVLP-CXR-BERT-specialized
     deploy:
       resources:
         reservations:

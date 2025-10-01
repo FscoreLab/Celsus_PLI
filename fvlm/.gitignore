@@ -1,0 +1,20 @@
+#Ignore the BiomedVLP-CXR-BERT-specialized directory
+BiomedVLP-CXR-BERT-specialized/
+
+# Ignore all __pycache__ folders anywhere
+__pycache__/
+**/__pycache__/
+
+# Ignore all Python bytecode files
+*.pyc
+*.pyo
+*.pyd
+
+
+
+# Byte-compiled Python
+# *.pyc
+# *.pyo
+# *.pyd
+# __pycache__/
+# **/__pycache__/
