@@ -41,6 +41,12 @@ DIFFUSION_CLASSIFIER_PATH = os.getenv("DIFFUSION_CLASSIFIER_PATH", None)
 DIFFUSION_UNET_PATH = os.getenv("DIFFUSION_UNET_PATH", None)
 CLASSIFIER_SCALE = float(os.getenv("CLASSIFIER_SCALE", "100.0"))
 
+# Пути к моделям FVLM
+FVLM_MODEL_PATH = os.getenv("FVLM_MODEL_PATH", "/app/models/fvlm/fvlm_model.pth")
+FVLM_MAE_WEIGHTS_PATH = os.getenv("FVLM_MAE_WEIGHTS_PATH", "/app/models/fvlm/mae_pretrain_vit_base.pth")
+FVLM_BERT_PATH = os.getenv("FVLM_BERT_PATH", "/app/models/fvlm/BiomedVLP-CXR-BERT-specialized")
+FVLM_CONFIG_PATH = os.getenv("FVLM_CONFIG_PATH", None)
+
 inference_service = None
 
 
@@ -95,6 +101,11 @@ async def startup_event():
         diffusion_classifier_path=DIFFUSION_CLASSIFIER_PATH,
         diffusion_unet_path=DIFFUSION_UNET_PATH,
         classifier_scale=CLASSIFIER_SCALE,
+        # FVLM параметры
+        fvlm_model_path=FVLM_MODEL_PATH if os.path.exists(FVLM_MODEL_PATH) else None,
+        fvlm_mae_weights_path=FVLM_MAE_WEIGHTS_PATH if os.path.exists(FVLM_MAE_WEIGHTS_PATH) else None,
+        fvlm_bert_path=FVLM_BERT_PATH if os.path.exists(FVLM_BERT_PATH) else None,
+        fvlm_config_path=FVLM_CONFIG_PATH,
     )
 
     logger.info("✅ Сервис инициализирован успешно!")

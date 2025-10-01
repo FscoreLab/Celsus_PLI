@@ -1204,8 +1204,66 @@ class LightGBMInference:
             self.shap_explainer = None
 
 
+class FVLMInferenceService:
+    """Сервис для FVLM инференса с автоматической сегментацией."""
+
+    def __init__(
+        self,
+        model_path: str,
+        mae_weights_path: str,
+        bert_path: str,
+        config_path: str = None,
+        device: str = "cuda",
+    ):
+        self.model_path = model_path
+        self.mae_weights_path = mae_weights_path
+        self.bert_path = bert_path
+        self.config_path = config_path or str(
+            Path(__file__).parent.parent / "fvlm" / "lavis" / "projects" / "blip" / "train" / "pretrain_ct.yaml"
+        )
+        self.device = device
+        self.inference = None
+
+        logger.info(f"FVLM Model: {model_path}")
+        logger.info(f"MAE Weights: {mae_weights_path}")
+        logger.info(f"BERT Path: {bert_path}")
+
+    def load_model(self):
+        """Загружает FVLM модель в память."""
+        if self.inference is None:
+            logger.info("Загружаем FVLM модель...")
+            self.inference = NiftiInferenceSeparateMasks(
+                model_path=self.model_path,
+                mae_weights_path=self.mae_weights_path,
+                bert_path=self.bert_path,
+                config_path=self.config_path,
+            )
+            logger.info("✅ FVLM модель загружена")
+
+    def unload_model(self):
+        """Выгружает модель из памяти."""
+        if self.inference is not None:
+            if hasattr(self.inference, "model") and self.inference.model is not None:
+                del self.inference.model
+                self.inference.model = None
+            del self.inference
+            self.inference = None
+            torch.cuda.empty_cache()
+            logger.info("FVLM модель выгружена")
+
+    def predict(self, nifti_path: str) -> Dict[str, float]:
+        """Предсказание патологий для NIfTI файла."""
+        if self.inference is None:
+            raise RuntimeError("Модель не загружена. Вызовите load_model() сначала.")
+
+        logger.info(f"Запуск FVLM инференса для: {nifti_path}")
+        results = self.inference.predict_single(image_path=nifti_path)
+        logger.info(f"✅ FVLM инференс завершен: {len(results)} патологий")
+        return results
+
+
 class LightGBMInferenceService:
-    """Сервис для полного инференса: Supervised + CT-CLIP + Diffusion + LightGBM."""
+    """Сервис для полного инференса: Supervised + CT-CLIP + Diffusion + FVLM + LightGBM."""
 
     def __init__(
         self,
@@ -1217,12 +1275,18 @@ class LightGBMInferenceService:
         diffusion_classifier_path: str = None,
         diffusion_unet_path: str = None,
         classifier_scale: float = 200.0,
+        # FVLM параметры
+        fvlm_model_path: str = None,
+        fvlm_mae_weights_path: str = None,
+        fvlm_bert_path: str = None,
+        fvlm_config_path: str = None,
     ):
         self.supervised_model_path = supervised_model_path
         self.ctclip_model_path = ctclip_model_path
         self.lightgbm_model_path = lightgbm_model_path
         self.device = device
         self.use_diffusion = diffusion_classifier_path is not None
+        self.use_fvlm = fvlm_model_path is not None
 
         self.supervised_inference = SupervisedModelInference(supervised_model_path, device)
         self.ctclip_inference = UniversalCTInference(model_path=ctclip_model_path, device=device, verbose=False)
@@ -1253,6 +1317,24 @@ class LightGBMInferenceService:
                 logger.info("Оба diffusion inference инициализированы (classifier + reconstruction)")
             else:
                 logger.info("Только diffusion classifier inference инициализирован")
+
+        # Инициализируем FVLM если пути указаны
+        self.fvlm_inference = None
+        if self.use_fvlm:
+            if not fvlm_mae_weights_path or not fvlm_bert_path:
+                logger.warning("FVLM параметры неполные, FVLM будет отключен")
+                self.use_fvlm = False
+            else:
+                logger.info("Инициализация FVLM...")
+                self.fvlm_inference = FVLMInferenceService(
+                    model_path=fvlm_model_path,
+                    mae_weights_path=fvlm_mae_weights_path,
+                    bert_path=fvlm_bert_path,
+                    config_path=fvlm_config_path,
+                    device=device,
+                )
+                logger.info("FVLM inference инициализирован")
+
 
     def process_zip_archive(self, zip_path: str) -> Dict:
         """
@@ -1298,14 +1380,27 @@ class LightGBMInferenceService:
                 logger.error(f"Ошибка конвертации DICOM в NIFTI: {e}")
                 raise
 
-            # 1. Supervised модель
+            # 1. FVLM модель (если включена)
+            fvlm_preds = None
+            if self.use_fvlm and self.fvlm_inference:
+                logger.info("Загружаем FVLM модель...")
+                self.fvlm_inference.load_model()
+                fvlm_preds = self.fvlm_inference.predict(nifti_file)
+
+                # Выгружаем FVLM
+                self.fvlm_inference.unload_model()
+                logger.info("FVLM модель выгружена")
+
+            # TODO: skip next steps if lungs too short
+
+            # 2. Supervised модель
             logger.info("Загружаем supervised модель...")
             self.supervised_inference.load_model()
             supervised_preds = self.supervised_inference.predict(nifti_file)
             self.supervised_inference.unload()
             logger.info("Supervised модель выгружена")
 
-            # 2. CT-CLIP модель
+            # 3. CT-CLIP модель
             logger.info("Загружаем CT-CLIP модель...")
             ctclip_result = self.ctclip_inference.infer(nifti_file, custom_pathologies=CTCLIP_PATHOLOGIES)
 
@@ -1320,7 +1415,7 @@ class LightGBMInferenceService:
                 torch.cuda.empty_cache()
             logger.info("CT-CLIP модель выгружена")
 
-            # 3. Diffusion модели (если включены)
+            # 4. Diffusion модели (если включены)
             diffusion_classifier_preds = None
             diffusion_reconstruction_scores = None
 
@@ -1353,7 +1448,7 @@ class LightGBMInferenceService:
                     torch.cuda.empty_cache()
                 logger.info("Diffusion classifier выгружен")
 
-            # 4. LightGBM модель
+            # 5. LightGBM модель
             logger.info("Загружаем LightGBM модель...")
             self.lightgbm_inference.load_model()
 

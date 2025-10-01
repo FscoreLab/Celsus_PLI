@@ -58,3 +58,6 @@ venv/
 # Temporary files
 *.tmp
 *.temp
+
+# Exclude weights
+**/weights/
