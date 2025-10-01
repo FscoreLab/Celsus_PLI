@@ -1099,8 +1099,8 @@ class LightGBMInference:
         # Вычисляем агрегированные фичи
         supervised_values = [features[f"supervised_{p}"] for p in self.supervised_pathologies]
         ctclip_values = [features[f"ctclip_{p}"] for p in self.ctclip_pathologies]
-        mednext_vals = _collect("mednext_") # TODO integrate further
-        fvlm_vals = _collect("fvlm_")  # TODO integrate further
+        mednext_vals = _collect("kolyan_") # TODO integrate further
+        fvlm_vals = _collect("okhr_")  # TODO integrate further
 
         features["supervised_mean_probability"] = np.mean(supervised_values)
         features["ctclip_mean_probability"] = np.mean(ctclip_values)
