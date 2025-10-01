@@ -10,7 +10,7 @@ echo "CT-CLIP + LightGBM API Server"
 echo "========================================="
 
 # Пути к моделям (настройте под вашу систему)
-export SUPERVISED_MODEL_PATH="${SUPERVISED_MODEL_PATH:-/media/crazyfrogspb/Repos/CT-CLIP/best_models/CT_CLIP_Supervised_finetune_Zheka.pt}"
+export SUPERVISED_MODEL_PATH="${SUPERVISED_MODEL_PATH:-/media/crazyfrogspb/Repos/CT-CLIP/best_models/supervised_model.pt}"
 export CTCLIP_MODEL_PATH="${CTCLIP_MODEL_PATH:-/media/crazyfrogspb/Repos/CT-CLIP/best_models/CT_VocabFine_v2.pt}"
 export LIGHTGBM_MODEL_PATH="${LIGHTGBM_MODEL_PATH:-/media/crazyfrogspb/Repos/CT-CLIP/lightgbm_results/final_lightgbm_model.pkl}"
 export OPTIMAL_THRESHOLD="${OPTIMAL_THRESHOLD:-0.5}"

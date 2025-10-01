@@ -3,7 +3,7 @@
 CT-CLIP Inference Service with LightGBM
 
 Сервис для инференса:
-1. Supervised модель (CT_CLIP_Supervised_finetune_Zheka.pt)
+1. Supervised модель (supervised_model.pt)
 2. CT-CLIP модель (CT_VocabFine_v2.pt)
 3. LightGBM модель для финального предсказания патологии
 """
@@ -810,8 +810,12 @@ class DiffusionReconstructionInference:
             sys.path.insert(0, diffusion_path)
 
         from diffusion_anomaly.gaussian_diffusion import (
-            GaussianDiffusion, LossType, ModelMeanType, ModelVarType,
-            get_named_beta_schedule)
+            GaussianDiffusion,
+            LossType,
+            ModelMeanType,
+            ModelVarType,
+            get_named_beta_schedule,
+        )
         from diffusion_anomaly.unet import UNetModel
 
         # Создаем UNet модель
@@ -1373,17 +1377,8 @@ class LightGBMInferenceService:
                 "study_uid": study_uid,
                 "series_uid": series_uid,
                 "probability_of_pathology": lgbm_result["probability"],
-                "pathology": "Патология" if lgbm_result["prediction"] == 1 else "Норма",
+                "pathology": int(lgbm_result["prediction"]),
                 "most_dangerous_pathology_type": lgbm_result["most_dangerous_pathology"],
-                "supervised_probabilities": supervised_preds,
-                "ctclip_probabilities": ctclip_preds,
-                "top_shap_features": lgbm_result["top_shap_features"],
             }
-
-            # Добавляем diffusion результаты если есть
-            if diffusion_classifier_preds:
-                result["diffusion_classifier"] = diffusion_classifier_preds
-            if diffusion_reconstruction_scores:
-                result["diffusion_reconstruction"] = diffusion_reconstruction_scores
 
             return result

@@ -30,7 +30,7 @@ RUN cd /app/transformer_maskgit && pip3 install -e .
 RUN mkdir -p /app/models
 
 # Копируем модели из best_models
-COPY best_models/CT_CLIP_Supervised_finetune_Zheka.pt /app/models/
+COPY best_models/supervised_model.pt /app/models/
 COPY best_models/CT_VocabFine_v2.pt /app/models/
 COPY lightgbm_results/final_lightgbm_model.pkl /app/models/
 
@@ -38,7 +38,7 @@ COPY lightgbm_results/final_lightgbm_model.pkl /app/models/
 EXPOSE 8000
 
 # Переменные окружения
-ENV SUPERVISED_MODEL_PATH=/app/models/CT_CLIP_Supervised_finetune_Zheka.pt
+ENV SUPERVISED_MODEL_PATH=/app/models/supervised_model.pt
 ENV CTCLIP_MODEL_PATH=/app/models/CT_VocabFine_v2.pt
 ENV LIGHTGBM_MODEL_PATH=/app/models/final_lightgbm_model.pkl
 ENV OPTIMAL_THRESHOLD=0.5

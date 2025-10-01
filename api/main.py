@@ -31,7 +31,7 @@ app = FastAPI(
     version="2.0.0",
 )
 
-SUPERVISED_MODEL_PATH = os.getenv("SUPERVISED_MODEL_PATH", "/app/models/CT_CLIP_Supervised_finetune_Zheka.pt")
+SUPERVISED_MODEL_PATH = os.getenv("SUPERVISED_MODEL_PATH", "/app/models/supervised_model.pt")
 CTCLIP_MODEL_PATH = os.getenv("CTCLIP_MODEL_PATH", "/app/models/CT_VocabFine_v2.pt")
 LIGHTGBM_MODEL_PATH = os.getenv("LIGHTGBM_MODEL_PATH", "/app/models/lightgbm_model.pkl")
 OPTIMAL_THRESHOLD = float(os.getenv("OPTIMAL_THRESHOLD", "0.4"))
@@ -50,13 +50,10 @@ class InferenceResponse(BaseModel):
     study_uid: str
     series_uid: str
     probability_of_pathology: float
-    pathology: str  # "Норма" или "Патология"
+    pathology: int  # 0 (норма) или 1 (патология)
     most_dangerous_pathology_type: str
     processing_status: str
     time_of_processing: float
-    supervised_probabilities: Optional[Dict[str, float]] = None
-    ctclip_probabilities: Optional[Dict[str, float]] = None
-    top_shap_features: Optional[Dict[str, float]] = None
 
 
 @app.on_event("startup")
@@ -161,9 +158,6 @@ async def predict(file: UploadFile = File(...)):
             most_dangerous_pathology_type=result["most_dangerous_pathology_type"],
             processing_status="Success",
             time_of_processing=processing_time,
-            supervised_probabilities=result.get("supervised_probabilities"),
-            ctclip_probabilities=result.get("ctclip_probabilities"),
-            top_shap_features=result.get("top_shap_features"),
         )
 
     except Exception as e:
@@ -181,9 +175,9 @@ async def predict(file: UploadFile = File(...)):
             content={
                 "study_uid": "",
                 "series_uid": "",
-                "probability_of_pathology": 0.0,
-                "pathology": "Unknown",
-                "most_dangerous_pathology_type": "Unknown",
+                "probability_of_pathology": None,
+                "pathology": None,
+                "most_dangerous_pathology_type": None,
                 "processing_status": "Failure",
                 "time_of_processing": processing_time,
                 "error": str(e),
