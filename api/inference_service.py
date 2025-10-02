@@ -30,6 +30,7 @@ from mednext.inference import init_model, predict_single_volume
 
 from CT_CLIP.ct_clip.ct_clip import CTCLIP
 from ct_clip_classifier import SimpleCTCLIPClassifier
+from ctclip_pathology_groups import CTCLIP_PATHOLOGY_GROUPS
 from scripts.universal_ct_inference import UniversalCTInference
 from transformer_maskgit.transformer_maskgit.ctvit import CTViT
 
@@ -1112,7 +1113,27 @@ class LightGBMInference:
         features["supervised_top3_mean"] = np.mean(sorted(supervised_values, reverse=True)[:3])
         features["ctclip_top3_mean"] = np.mean(sorted(ctclip_values, reverse=True)[:3])
 
-
+        # Добавляем групповые фичи для CT-CLIP
+        for group_name, pathologies in CTCLIP_PATHOLOGY_GROUPS.items():
+            # Собираем вероятности для патологий в группе
+            group_values = [features[f"ctclip_{pathology}"] for pathology in pathologies 
+                            if f"ctclip_{pathology}" in features]
+            
+            if group_values:
+                # Max - максимальная вероятность в группе
+                features[f"ctclip_group_{group_name}_max"] = np.max(group_values)
+                
+                # Mean - средняя вероятность в группе
+                features[f"ctclip_group_{group_name}_mean"] = np.mean(group_values)
+                
+                # Count high - количество патологий с p > 0.5
+                features[f"ctclip_group_{group_name}_count_high"] = np.sum(np.array(group_values) > 0.5)
+                
+                # Std - стандартное отклонение (для групп с >1 патологией)
+                if len(group_values) > 1:
+                    features[f"ctclip_group_{group_name}_std"] = np.std(group_values)
+                else:
+                    features[f"ctclip_group_{group_name}_std"] = 0.0
 
         # Добавляем diffusion classifier фичи если есть
         if diffusion_classifier_probs:
@@ -1182,21 +1203,51 @@ class LightGBMInference:
 
             # Находим фичу с максимальным положительным SHAP вкладом
             shap_values_flat = shap_values[0] if len(shap_values.shape) > 1 else shap_values
-            max_shap_idx = np.argmax(shap_values_flat)
-            most_dangerous_feature = features_df.columns[max_shap_idx]
+            
+            # Фильтруем только положительные SHAP значения (увеличивающие вероятность патологии)
+            positive_mask = shap_values_flat > 0
+            max_shap_idx = None  # Инициализируем для дальнейшего использования
+            
+            if not np.any(positive_mask):
+                # Нет положительных SHAP вкладов - патология не обнаружена
+                most_dangerous_pathology = "No specific pathology detected"
+                most_dangerous_feature = None
+            else:
+                # Находим максимальный положительный SHAP вклад среди КОНКРЕТНЫХ патологий
+                # Исключаем агрегированные фичи (mean, max, top3, std) и групповые фичи (_group_)
+                feature_names = features_df.columns
+                pathology_mask = positive_mask & ~np.array([
+                    any(x in str(feat) for x in ['_mean', '_max', '_top3', '_std', '_group_'])
+                    for feat in feature_names
+                ])
+                
+                if np.any(pathology_mask):
+                    # Берем максимальный SHAP среди конкретных патологий
+                    pathology_shap_values = shap_values_flat.copy()
+                    pathology_shap_values[~pathology_mask] = -np.inf
+                    max_shap_idx = np.argmax(pathology_shap_values)
+                else:
+                    # Если нет конкретных патологий, берем максимальный положительный
+                    positive_shap_values = shap_values_flat.copy()
+                    positive_shap_values[~positive_mask] = -np.inf
+                    max_shap_idx = np.argmax(positive_shap_values)
+                
+                most_dangerous_feature = features_df.columns[max_shap_idx]
+                most_dangerous_pathology = self._feature_to_pathology_name(most_dangerous_feature)
 
-            # Определяем название патологии из фичи
-            most_dangerous_pathology = self._feature_to_pathology_name(most_dangerous_feature)
-
-            # Собираем топ-5 SHAP вкладов
+            # Собираем топ-5 положительных SHAP вкладов
             top_shap_indices = np.argsort(shap_values_flat)[-5:][::-1]
             top_shap_features = {}
             for idx in top_shap_indices:
-                feat_name = features_df.columns[idx]
-                top_shap_features[feat_name] = float(shap_values_flat[idx])
+                if shap_values_flat[idx] > 0:  # Только положительные вклады
+                    feat_name = features_df.columns[idx]
+                    top_shap_features[feat_name] = float(shap_values_flat[idx])
 
-            shap_value = shap_values_flat[max_shap_idx]
-            logger.info(f"Most dangerous pathology: {most_dangerous_pathology} (SHAP: {shap_value:.4f})")
+            if most_dangerous_feature is not None:
+                shap_value = shap_values_flat[max_shap_idx]
+                logger.info(f"Most dangerous pathology: {most_dangerous_pathology} (SHAP: {shap_value:.4f})")
+            else:
+                logger.info(f"Most dangerous pathology: {most_dangerous_pathology}")
 
         except Exception as e:
             logger.warning(f"Ошибка SHAP анализа: {e}")

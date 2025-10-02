@@ -192,9 +192,18 @@ curl -X POST "http://localhost:8000/predict" \
   "pathology": 1,
   "most_dangerous_pathology_type": "Pneumonia",
   "processing_status": "Success",
-  "time_of_processing": 45.67,
+  "time_of_processing": 45.67
 }
 ```
+
+**Описание полей:**
+- `study_uid` — уникальный идентификатор исследования (DICOM StudyInstanceUID)
+- `series_uid` — уникальный идентификатор серии (DICOM SeriesInstanceUID)
+- `probability_of_pathology` — вероятность наличия патологии (0.0 - 1.0)
+- `pathology` — классификация: 0 (норма) или 1 (патология)
+- `most_dangerous_pathology_type` — конкретная патология, которая наиболее сильно повлияла на решение модели для данного исследования, или `"No specific pathology detected"` если модель не выявила конкретных патологий
+- `processing_status` — статус обработки: "Success" или "Failure"
+- `time_of_processing` — время обработки в секундах
 
 **Формат ответа (Failure):**
 ```json
