@@ -36,6 +36,13 @@ def process_single_archive(api_url: str, archive_path: Path) -> dict:
 
         if response.status_code == 200:
             result = response.json()
+            # Преобразуем top_pathologies в строку для most_dangerous_pathology_type
+            if "top_pathologies" in result:
+                result["most_dangerous_pathology_type"] = (
+                    ", ".join(result["top_pathologies"]) if result["top_pathologies"] else ""
+                )
+            else:
+                result["most_dangerous_pathology_type"] = ""
             result["path_to_study"] = str(archive_path.absolute())
             result["processing_time_total"] = processing_time
             return result
@@ -131,19 +138,19 @@ def batch_process(api_url: str, input_dir: Path, output_excel: Path):
         "processing_status",
         "time_of_processing",
     ]
-    
+
     # Опциональные колонки
     optional_columns = [
         "most_dangerous_pathology_type",
         "error",
     ]
-    
+
     # Собираем только те колонки, которые есть в данных
     final_columns = [col for col in base_columns if col in df_results.columns]
     for col in optional_columns:
         if col in df_results.columns:
             final_columns.append(col)
-    
+
     df_final = df_results[final_columns].copy()
 
     print(f"\n💾 Сохраняем результаты в: {output_excel}")
@@ -177,7 +184,9 @@ def batch_process(api_url: str, input_dir: Path, output_excel: Path):
 
         # Статистика по патологиям (если есть в результатах)
         if success_results and "most_dangerous_pathology_type" in success_results[0]:
-            dangerous_pathologies = pd.Series([r["most_dangerous_pathology_type"] for r in success_results]).value_counts()
+            dangerous_pathologies = pd.Series(
+                [r["most_dangerous_pathology_type"] for r in success_results]
+            ).value_counts()
             print("\nТоп-5 наиболее частых опасных патологий:")
             for i, (pathology, count) in enumerate(dangerous_pathologies.head(5).items(), 1):
                 print(f"  {i}. {pathology}: {count}")
