@@ -15,6 +15,8 @@
 1. **CT-CLIP Model** — предобученная модель на основе Vision Transformer (https://arxiv.org/abs/2403.17834)
 2. **Supervised Model** — энкодер CT-CLIP, дообученный на размеченных данных с патологиями
 3. **Anomaly Diffusion Detector** - модель детекции аномалий на основе диффузии
+4. **fVLM Model** - предобученная модель на основе визуального и текстового энкодера + тонкое контрастивное обучение (благодаря известным анатомическим структурам от TotalSegmentator модель училась сопоставлять каждую часть изображения с её куском текста) (https://openreview.net/pdf?id=nYpPAT4L3D)
+5. **MedNeXt Model** - supervised-модель на базе архитектуры MedNext с multilabel-классификацией на 22 класса
 
 Предсказания моделей объединяются с помощью модели **LightGBM** на основе градиентного бустинга
 
@@ -119,6 +121,7 @@ Celsus_PLI/
 │   ├── __init__.py                  # Python пакет инициализация
 │   ├── main.py                      # FastAPI приложение
 │   ├── inference_service.py         # Логика инференса моделей
+│   ├── ctclip_pathology_groups.py   # Группы патологий CT-CLIP
 │   ├── requirements.txt             # Python зависимости
 │   ├── Dockerfile                   # Docker образ
 │   ├── docker-compose.yml           # Docker Compose конфигурация
@@ -144,6 +147,29 @@ Celsus_PLI/
 │   ├── unet.py                      # U-Net архитектура
 │   ├── script_util.py               # Вспомогательные функции
 │   └── ...                          # Другие модули diffusion
+│
+├── fvlm/                            # fVLM модель (контрастивное обучение)
+│   ├── inference_nifti_separate_masks.py  # Инференс на NIfTI с масками
+│   ├── lct_validation.py            # Валидация легких
+│   ├── utils.py                     # Вспомогательные функции
+│   ├── requirements.txt             # Все fVLM зависимости
+│   ├── requirements_core.txt        # Базовые fVLM зависимости
+│   ├── README.md                    # Документация fVLM
+│   ├── lavis/                       # LAVIS фреймворк
+│   ├── weights/                     # Веса моделей
+│   │   ├── fvlm_model.pth           # Основная fVLM модель
+│   │   ├── mae_pretrain_vit_base.pth # MAE предобученный ViT
+│   │   └── BiomedVLP-CXR-BERT-specialized/ # CXR-BERT веса
+│   └── ...                          # Другие модули fvlm
+│
+├── mednext/                         # MedNeXt архитектура
+│   ├── __init__.py
+│   ├── mednext_v1.py                # MedNeXt v1 модель
+│   ├── mednext_blocks.py            # Блоки MedNeXt
+│   ├── mednext_classifier3d.py      # 3D классификатор
+│   ├── inference.py                 # Инференс MedNeXt
+│   ├── crop_human_body.py           # Обрезка области тела
+│   └── artifacts/                   # Артефакты и веса
 │
 ├── transformer_maskgit/             # Transformer MaskGIT
 │   └── transformer_maskgit/
