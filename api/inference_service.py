@@ -260,6 +260,7 @@ class DICOMValidator:
             "num_files": len(dicom_paths),
             "num_valid": 0,
             "num_corrupted": 0,
+            "total_slices": 0,  # Общее количество срезов с учетом мультифрейма
             "errors": [],
             "warnings": [],
             "valid_files": [],
@@ -270,21 +271,39 @@ class DICOMValidator:
             result["errors"].append("Пустой список DICOM файлов")
             return result
 
+        total_slices = 0  # Общее количество срезов (с учетом мультифрейма)
+        
         for file_path in dicom_paths:
             validation = DICOMValidator.validate_dicom_file(file_path, check_pixels=check_pixels)
 
             if validation["can_process"]:
                 result["num_valid"] += 1
                 result["valid_files"].append(file_path)
+                
+                # Проверяем количество фреймов (для мультифрейм DICOM)
+                try:
+                    dcm = pydicom.dcmread(file_path, stop_before_pixels=True, force=True)
+                    num_frames = getattr(dcm, 'NumberOfFrames', None)
+                    if num_frames and int(num_frames) > 1:
+                        logger.info(f"Обнаружен мультифрейм DICOM: {os.path.basename(file_path)} ({num_frames} фреймов)")
+                        total_slices += int(num_frames)
+                    else:
+                        total_slices += 1
+                except Exception:
+                    total_slices += 1
             else:
                 result["num_corrupted"] += 1
                 result["corrupted_files"].append(
                     {"file": file_path, "errors": validation["errors"], "warnings": validation["warnings"]}
                 )
 
-        if result["num_valid"] < DICOMValidator.MIN_SLICES:
+        # Сохраняем общее количество срезов
+        result["total_slices"] = total_slices
+        
+        # Используем total_slices вместо num_valid для проверки минимального количества срезов
+        if total_slices < DICOMValidator.MIN_SLICES:
             result["errors"].append(
-                f"Недостаточно валидных срезов: {result['num_valid']}, требуется минимум {DICOMValidator.MIN_SLICES}"
+                f"Недостаточно валидных срезов: {total_slices}, требуется минимум {DICOMValidator.MIN_SLICES}"
             )
             result["can_process"] = False
         else:
@@ -410,8 +429,8 @@ class DICOMSeriesSelector:
             # Пропускаем серии с недостаточным количеством валидных срезов
             if not validation["can_process"]:
                 logger.info(
-                    f"Серия {series_uid} пропущена: {validation['num_valid']} валидных срезов "
-                    f"из {validation['num_files']} (требуется минимум {DICOMValidator.MIN_SLICES})"
+                    f"Серия {series_uid} пропущена: {validation['total_slices']} валидных срезов "
+                    f"(требуется минимум {DICOMValidator.MIN_SLICES})"
                 )
                 if validation["num_corrupted"] > 0:
                     logger.debug(f"Поврежденных файлов: {validation['num_corrupted']}")
@@ -434,7 +453,7 @@ class DICOMSeriesSelector:
                 series_info = {
                     "series_uid": series_uid,
                     "paths": valid_paths,  # Используем только валидные файлы
-                    "num_slices": len(valid_paths),
+                    "num_slices": validation["total_slices"],  # Учитываем мультифрейм DICOM
                     "kernel": kernel,
                     "validation": validation,
                 }
