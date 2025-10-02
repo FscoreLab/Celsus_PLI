@@ -14,7 +14,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import dicom2nifti
 import joblib
@@ -24,14 +24,13 @@ import pydicom
 import shap
 import torch
 import torch.nn.functional as F
+from ctclip_pathology_groups import CTCLIP_PATHOLOGY_GROUPS
 from transformers import BertModel, BertTokenizer
-from typing import Dict, Optional, Union
-from mednext.inference import init_model, predict_single_volume
-from fvlm.inference_nifti_separate_masks import NiftiInferenceSeparateMasks
 
 from CT_CLIP.ct_clip.ct_clip import CTCLIP
 from ct_clip_classifier import SimpleCTCLIPClassifier
-from ctclip_pathology_groups import CTCLIP_PATHOLOGY_GROUPS
+from fvlm.inference_nifti_separate_masks import NiftiInferenceSeparateMasks
+from mednext.inference import init_model, predict_single_volume
 from scripts.universal_ct_inference import UniversalCTInference
 from transformer_maskgit.transformer_maskgit.ctvit import CTViT
 
@@ -812,9 +811,9 @@ class DiffusionReconstructionInference:
         classifier_model: "DiffusionClassifierInference",
         device: str = "cuda",
         image_size: int = 256,
-        classifier_scale: float = 200.0,
-        noise_level: int = 500,
-        num_inference_steps: int = 20,
+        classifier_scale: float = 100.0,
+        noise_level: int = 200,
+        num_inference_steps: int = 300,
     ):
         self.diffusion_model_path = diffusion_model_path
         self.classifier_model = classifier_model  # Используем уже загруженный classifier
@@ -835,12 +834,8 @@ class DiffusionReconstructionInference:
             sys.path.insert(0, diffusion_path)
 
         from diffusion_anomaly.gaussian_diffusion import (
-            GaussianDiffusion,
-            LossType,
-            ModelMeanType,
-            ModelVarType,
-            get_named_beta_schedule,
-        )
+            GaussianDiffusion, LossType, ModelMeanType, ModelVarType,
+            get_named_beta_schedule)
         from diffusion_anomaly.unet import UNetModel
 
         # Создаем UNet модель
@@ -941,8 +936,8 @@ class DiffusionReconstructionInference:
                 logits = self.classifier_model.model(x_in, t)
                 log_probs = F.log_softmax(logits, dim=-1)
                 selected = log_probs[range(len(logits)), y.view(-1)]
-                grad = torch.autograd.grad(selected.sum(), x_in)[0]
-                return grad, grad * self.classifier_scale
+                a = torch.autograd.grad(selected.sum(), x_in)[0]
+                return a, a * self.classifier_scale
 
         return cond_fn
 
@@ -963,20 +958,10 @@ class DiffusionReconstructionInference:
             model_kwargs = {"y": target_y}
 
             with torch.no_grad():  # no_grad для diffusion из-за enable_grad в cond_fn
-                # Forward encoding
-                timesteps_forward = torch.linspace(
-                    0, self.noise_level - 1, self.num_inference_steps, dtype=torch.long, device=self.device
-                )
-                current = batch
-
-                for j in range(len(timesteps_forward) - 1):
-                    t_batch = timesteps_forward[j].repeat(bsz).to(self.device)
-                    out = self.diffusion.ddim_reverse_sample(
-                        self.diffusion_model, current, t_batch, clip_denoised=True, model_kwargs=model_kwargs, eta=0.0
-                    )
-                    current = out["sample"]
-
-                x_encoded = current
+                # Forward encoding via q_sample
+                base_noise = torch.randn_like(batch)
+                t_final = torch.tensor([self.noise_level], dtype=torch.long, device=self.device).repeat(bsz)
+                x_encoded = self.diffusion.q_sample(batch, t_final, noise=base_noise)
 
                 # Backward decoding with guidance
                 timesteps_backward = torch.linspace(
@@ -1471,7 +1456,7 @@ class LightGBMInferenceService:
         device: str = "cuda",
         diffusion_classifier_path: str = None,
         diffusion_unet_path: str = None,
-        classifier_scale: float = 200.0,
+        classifier_scale: float = 150.0,
         use_diffusion_reconstruction: bool = False, 
         # FVLM параметры
         fvlm_model_path: str = None,
@@ -1513,8 +1498,8 @@ class LightGBMInferenceService:
                     device=device,
                     image_size=256,
                     classifier_scale=classifier_scale,
-                    noise_level=500,
-                    num_inference_steps=20,
+                    noise_level=200,
+                    num_inference_steps=300,
                 )
                 logger.info("Оба diffusion inference инициализированы (classifier + reconstruction)")
             else:

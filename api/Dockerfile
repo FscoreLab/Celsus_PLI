@@ -27,7 +27,7 @@ RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; d
 RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(294)"
 RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(295)"
 RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(298)"
-
+RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(297)"
 
 # Устанавливаем дополнительные зависимости
 RUN apt-get update && apt-get install -y libgl1-mesa-glx libglib2.0-0

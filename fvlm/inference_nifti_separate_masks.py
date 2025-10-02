@@ -281,7 +281,7 @@ class NiftiInferenceSeparateMasks:
 
         # Запускаем TotalSegmentator - возвращает NIfTI изображение с мультилейбел маской
         print("Запуск TotalSegmentator...")
-        segmentation_img = totalsegmentator(input_img, quiet=False, ml=True, fast=False,
+        segmentation_img = totalsegmentator(input_img, quiet=False, ml=True, fast=True,
                                             roi_subset=[totalseg_id_class_map[id_] for id_ in totalseg_to_our_mapping])
 
         # Получаем массив данных
