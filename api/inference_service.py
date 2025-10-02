@@ -497,7 +497,6 @@ class SupervisedModelInference:
 
     def load_model(self):
         """Загружает supervised модель."""
-        logger.info("Загружаем supervised модель...")
 
         checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
 
@@ -1081,12 +1080,12 @@ class LightGBMInference:
         # Добавляем supervised фичи
         for pathology in self.supervised_pathologies:
             feature_name = f"supervised_{pathology}"
-            features[feature_name] = supervised_probs.get(feature_name, 0.0)
+            features[feature_name] = supervised_probs[feature_name]
 
         # Добавляем CT-CLIP фичи
         for pathology in self.ctclip_pathologies:
             feature_name = f"ctclip_{pathology}"
-            features[feature_name] = ctclip_probs.get(feature_name, 0.0)
+            features[feature_name] = ctclip_probs[feature_name]
 
         if mednext_preds:
             mednext_norm = self._ensure_prefixed(mednext_preds, "kolyan_")
@@ -1113,6 +1112,26 @@ class LightGBMInference:
         features["ctclip_max_probability"] = np.max(ctclip_values)
         features["supervised_top3_mean"] = np.mean(sorted(supervised_values, reverse=True)[:3])
         features["ctclip_top3_mean"] = np.mean(sorted(ctclip_values, reverse=True)[:3])
+        
+        # Агрегированные фичи для MedNeXt (kolyan_)
+        if mednext_vals:
+            features["kolyan_mean"] = np.mean(mednext_vals)
+            features["kolyan_max"] = np.max(mednext_vals)
+            features["kolyan_top3_mean"] = np.mean(sorted(mednext_vals, reverse=True)[:3])
+        else:
+            features["kolyan_mean"] = 0.0
+            features["kolyan_max"] = 0.0
+            features["kolyan_top3_mean"] = 0.0
+        
+        # Агрегированные фичи для FVLM (okhr_)
+        if fvlm_vals:
+            features["okhr_mean"] = np.mean(fvlm_vals)
+            features["okhr_max"] = np.max(fvlm_vals)
+            features["okhr_top3_mean"] = np.mean(sorted(fvlm_vals, reverse=True)[:3])
+        else:
+            features["okhr_mean"] = 0.0
+            features["okhr_max"] = 0.0
+            features["okhr_top3_mean"] = 0.0
 
         # Добавляем групповые фичи для CT-CLIP
         for group_name, pathologies in CTCLIP_PATHOLOGY_GROUPS.items():
@@ -1579,12 +1598,11 @@ class LightGBMInferenceService:
                 self.fvlm_inference.unload_model()
                 logger.info("FVLM модель выгружена")
 
-            # TODO: skip next steps if lungs too short
-
             # 2. Supervised модель
             logger.info("Загружаем supervised модель...")
             self.supervised_inference.load_model()
             supervised_preds = self.supervised_inference.predict(nifti_file)
+            logger.info(f"Supervised predictions (first 5): {dict(list(supervised_preds.items())[:5])}")
             self.supervised_inference.unload()
             logger.info("Supervised модель выгружена")
 
@@ -1595,6 +1613,8 @@ class LightGBMInferenceService:
             ctclip_preds = {}
             for pathology, prob in ctclip_result["pathology_predictions"].items():
                 ctclip_preds[f"ctclip_{pathology}"] = prob
+            
+            logger.info(f"CT-CLIP predictions (first 5): {dict(list(ctclip_preds.items())[:5])}")
 
             # Выгружаем CT-CLIP модель
             if hasattr(self.ctclip_inference, "model") and self.ctclip_inference.model is not None:
@@ -1608,10 +1628,8 @@ class LightGBMInferenceService:
             if self.use_mednext and self.mednext_inference is not None:
                 logger.info("Загружаем MedNeXt модель...")
                 self.mednext_inference.load_model()
-                # Note: MedNeXt supports both NIfTI and DICOM ZIP; here we already have NIfTI path.
-                raw_probs = self.mednext_inference.predict(nifti_file)  # {class: prob}
-                # Prefix features to avoid collisions and make columns explicit
-                mednext_preds = {f"mednext_{cls}": float(prob) for cls, prob in raw_probs.items()}
+                mednext_preds = self.mednext_inference.predict(nifti_file)
+                logger.info(f"MedNeXt predictions: {mednext_preds}")
                 self.mednext_inference.unload_model()
                 logger.info("MedNeXt модель выгружена")
 
@@ -1659,7 +1677,9 @@ class LightGBMInferenceService:
                 diffusion_classifier_preds,
                 diffusion_reconstruction_scores,
                 mednext_preds=mednext_preds,
+                fvlm_preds=fvlm_preds,
             )
+            logger.info(f"Features: {features_df.to_dict()}")
 
             # Делаем предсказание
             lgbm_result = self.lightgbm_inference.predict(features_df)
@@ -1676,6 +1696,8 @@ class LightGBMInferenceService:
                 "pathology": int(lgbm_result["prediction"]),
                 "most_dangerous_pathology_type": lgbm_result["most_dangerous_pathology"],
             }
+
+            logger.info(f"Result: {result}")
 
             return result
 

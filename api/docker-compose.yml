@@ -19,9 +19,9 @@ services:
       - DIFFUSION_UNET_PATH=/app/models/diffusion_checkpoint.pt
       - CLASSIFIER_SCALE=100.0
       # FVLM модели
-      - FVLM_MODEL_PATH=/app/models/fvlm/fvlm_model.pth
-      - FVLM_MAE_WEIGHTS_PATH=/app/models/fvlm/mae_pretrain_vit_base.pth
-      - FVLM_BERT_PATH=/app/models/fvlm/BiomedVLP-CXR-BERT-specialized
+      - FVLM_MODEL_PATH=/app/fvlm/weights/fvlm_model.pth
+      - FVLM_MAE_WEIGHTS_PATH=/app/fvlm/weights/mae_pretrain_vit_base.pth
+      - FVLM_BERT_PATH=/app/fvlm/weights/BiomedVLP-CXR-BERT-specialized
     deploy:
       resources:
         reservations:

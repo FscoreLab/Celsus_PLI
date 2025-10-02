@@ -20,9 +20,18 @@ RUN pip install -U pip setuptools wheel setuptools_scm
 RUN pip install --no-cache-dir "git+https://github.com/MIC-DKFZ/nnUNet@v2.6.2"
 RUN pip install TotalSegmentator==2.11.0
 
+# Скачиваем модели TotalSegmentator заранее
+RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(291)"
+RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(292)"
+RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(293)"
+RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(294)"
+RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(295)"
+RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(298)"
+
+
 # Устанавливаем дополнительные зависимости
 RUN apt-get update && apt-get install -y libgl1-mesa-glx libglib2.0-0
-RUN pip3 install beartype==0.21.0
+RUN pip3 install beartype==0.21.0 blobfile==3.1.0
 
 # Копируем модели из best_models
 COPY best_models/supervised_model.pt /app/best_models/
@@ -33,16 +42,6 @@ COPY best_models/lightgbm_model.pkl /app/best_models/
 COPY fvlm/ /app/fvlm/
 COPY mednext/ /app/mednext/
 RUN pip3 install -e /app/fvlm
-
-# Скачиваем модели TotalSegmentator заранее
-RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(291)"
-RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(292)"
-RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(293)"
-RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(294)"
-RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(295)"
-RUN python3 -c "from totalsegmentator.libs import download_pretrained_weights; download_pretrained_weights(298)"
-
-RUN pip3 install blobfile==3.1.0
 
 COPY CT_CLIP/ /app/CT_CLIP/
 COPY transformer_maskgit/ /app/transformer_maskgit/

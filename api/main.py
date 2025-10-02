@@ -57,7 +57,7 @@ class InferenceResponse(BaseModel):
     series_uid: str
     probability_of_pathology: float
     pathology: int  # 0 (норма) или 1 (патология)
-    most_dangerous_pathology_type: str
+    most_dangerous_pathology_type: Optional[str] = None
     processing_status: str
     time_of_processing: float
 
@@ -161,12 +161,15 @@ async def predict(file: UploadFile = File(...)):
         processing_time = time.time() - start_time
         logger.info(f"✅ Обработка завершена за {processing_time:.2f} сек")
 
+        # Для нормы не возвращаем most_dangerous_pathology_type
+        most_dangerous = result["most_dangerous_pathology_type"] if result["pathology"] == 1 else None
+
         return InferenceResponse(
             study_uid=result["study_uid"],
             series_uid=result["series_uid"],
             probability_of_pathology=result["probability_of_pathology"],
             pathology=result["pathology"],
-            most_dangerous_pathology_type=result["most_dangerous_pathology_type"],
+            most_dangerous_pathology_type=most_dangerous,
             processing_status="Success",
             time_of_processing=processing_time,
         )
