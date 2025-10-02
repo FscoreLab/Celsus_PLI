@@ -4,6 +4,7 @@ FastAPI приложение для CT-CLIP + LightGBM инференса
 """
 
 import asyncio
+import gc
 import logging
 import os
 import shutil
@@ -14,9 +15,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+import torch
+from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -28,11 +31,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+class CUDACleanupMiddleware(BaseHTTPMiddleware):
+    """Middleware для агрессивной очистки CUDA памяти после каждого запроса."""
+    
+    async def dispatch(self, request: Request, call_next):
+        try:
+            response = await call_next(request)
+            return response
+        finally:
+            # Агрессивная очистка CUDA памяти после КАЖДОГО запроса
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            gc.collect()
+            logger.debug("🧹 CUDA память очищена после запроса")
+
+
 app = FastAPI(
     title="CT-CLIP + LightGBM Inference API",
     description="API для инференса CT-CLIP моделей с LightGBM классификацией на DICOM архивах",
     version="2.0.0",
 )
+
+# Добавляем middleware для очистки CUDA памяти
+app.add_middleware(CUDACleanupMiddleware)
 
 SUPERVISED_MODEL_PATH = os.getenv("SUPERVISED_MODEL_PATH", "/app/models/supervised_model.pt")
 CTCLIP_MODEL_PATH = os.getenv("CTCLIP_MODEL_PATH", "/app/models/CT_VocabFine_v2.pt")

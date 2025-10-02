@@ -58,5 +58,7 @@ echo "API will be available at: http://localhost:8000"
 echo "Docs: http://localhost:8000/docs"
 echo ""
 
-# Запуск сервера
-python main.py
+# Запуск сервера с правильными параметрами
+# --limit-concurrency 1: обрабатывать только один запрос за раз (чтобы избежать OOM)
+# --timeout-keep-alive 3600: держать соединение 1 час для долгих запросов
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --limit-concurrency 1 --timeout-keep-alive 3600

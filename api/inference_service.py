@@ -8,6 +8,7 @@ CT-CLIP Inference Service with LightGBM
 3. LightGBM модель для финального предсказания патологии
 """
 
+import gc
 import logging
 import os
 import sys
@@ -598,7 +599,9 @@ class SupervisedModelInference:
         if self.model is not None:
             del self.model
             self.model = None
-            torch.cuda.empty_cache()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
 
 
 class CTCLIPInferenceService:
@@ -687,7 +690,9 @@ class CTCLIPInferenceService:
             if hasattr(self.ctclip_inference, "model") and self.ctclip_inference.model is not None:
                 del self.ctclip_inference.model
                 self.ctclip_inference.model = None
-                torch.cuda.empty_cache()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                gc.collect()
             logger.info("CT-CLIP модель выгружена")
 
             return predictions
@@ -1322,6 +1327,7 @@ class LightGBMInference:
         if self.shap_explainer is not None:
             del self.shap_explainer
             self.shap_explainer = None
+        gc.collect()
 
 
 class FVLMInferenceService:
@@ -1368,7 +1374,9 @@ class FVLMInferenceService:
                 self.inference.model = None
             del self.inference
             self.inference = None
-            torch.cuda.empty_cache()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
             logger.info("FVLM модель выгружена")
 
     def predict(self, nifti_path: str) -> Dict[str, float]:
@@ -1430,7 +1438,9 @@ class MedNeXtInferenceService:
         finally:
             self.artifacts = None
             try:
-                torch.cuda.empty_cache()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                gc.collect()
             except Exception:
                 pass
             logger.info("MedNeXt model unloaded")
@@ -1586,7 +1596,9 @@ class LightGBMInferenceService:
         if hasattr(self.ctclip_inference, "model") and self.ctclip_inference.model is not None:
             del self.ctclip_inference.model
             self.ctclip_inference.model = None
-            torch.cuda.empty_cache()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
         logger.info("CT-CLIP модель выгружена")
 
         # 4. MedNext
@@ -1621,14 +1633,18 @@ class LightGBMInferenceService:
                     del self.diffusion_reconstruction_inference.diffusion
                     self.diffusion_reconstruction_inference.diffusion_model = None
                     self.diffusion_reconstruction_inference.diffusion = None
-                    torch.cuda.empty_cache()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    gc.collect()
                 logger.info("Diffusion reconstruction модель выгружена")
 
             # Выгружаем classifier
             if self.diffusion_classifier_inference.model:
                 del self.diffusion_classifier_inference.model
                 self.diffusion_classifier_inference.model = None
-                torch.cuda.empty_cache()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                gc.collect()
             logger.info("Diffusion classifier выгружен")
 
         # 6. LightGBM модель (основная)

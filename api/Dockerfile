@@ -62,4 +62,7 @@ EXPOSE 8000
 ENV PYTHONPATH=/app:$PYTHONPATH
 
 # Запуск API
-CMD ["python3", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "600", "--timeout-graceful-shutdown", "600"]
+# --limit-concurrency 1: обрабатывать только один запрос за раз
+# --timeout-keep-alive 3600: держать соединение живым 1 час (для долгих запросов)
+# --timeout-graceful-shutdown 120: даем время на graceful shutdown
+CMD ["python3", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--limit-concurrency", "1", "--timeout-keep-alive", "3600", "--timeout-graceful-shutdown", "120"]
