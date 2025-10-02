@@ -55,18 +55,6 @@ COPY api/ctclip_pathology_groups.py /app/
 # Порт для API
 EXPOSE 8000
 
-# Переменные окружения
-ENV SUPERVISED_MODEL_PATH=/app/best_models/supervised_model.pt
-ENV CTCLIP_MODEL_PATH=/app/best_models/CT_VocabFine_v2.pt
-ENV LIGHTGBM_MODEL_PATH=/app/best_models/lightgbm_model.pkl
-ENV OPTIMAL_THRESHOLD=0.57
-
-# FVLM пути
-ENV FVLM_MODEL_PATH=/app/fvlm/weights/fvlm_model.pth
-ENV FVLM_MAE_WEIGHTS_PATH=/app/fvlm/weights/mae_pretrain_vit_base.pth
-ENV FVLM_BERT_PATH=/app/fvlm/weights/BiomedVLP-CXR-BERT-specialized
-
-ENV DEVICE=cuda
 ENV PYTHONPATH=/app:$PYTHONPATH
 
 # Запуск API

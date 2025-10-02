@@ -10,18 +10,18 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SUPERVISED_MODEL_PATH=/app/models/supervised_model.pt
-      - CTCLIP_MODEL_PATH=/app/models/CT_VocabFine_v2.pt
-      - LIGHTGBM_MODEL_PATH=/app/models/lightgbm_model.pkl
-      - OPTIMAL_THRESHOLD=0.57
-      - DEVICE=cuda
-      - DIFFUSION_CLASSIFIER_PATH=/app/models/ct_classifier.pt
-      - DIFFUSION_UNET_PATH=/app/models/diffusion_checkpoint.pt
-      - CLASSIFIER_SCALE=100.0
+      - SUPERVISED_MODEL_PATH
+      - CTCLIP_MODEL_PATH
+      - LIGHTGBM_MODEL_PATH
+      - OPTIMAL_THRESHOLD
+      - DEVICE
+      - DIFFUSION_CLASSIFIER_PATH
+      - DIFFUSION_UNET_PATH
+      - CLASSIFIER_SCALE
       # FVLM модели
-      - FVLM_MODEL_PATH=/app/fvlm/weights/fvlm_model.pth
-      - FVLM_MAE_WEIGHTS_PATH=/app/fvlm/weights/mae_pretrain_vit_base.pth
-      - FVLM_BERT_PATH=/app/fvlm/weights/BiomedVLP-CXR-BERT-specialized
+      - FVLM_MODEL_PATH
+      - FVLM_MAE_WEIGHTS_PATH
+      - FVLM_BERT_PATH
     deploy:
       resources:
         reservations:
