@@ -3,11 +3,14 @@
 FastAPI приложение для CT-CLIP + LightGBM инференса
 """
 
+import asyncio
 import logging
 import os
+import shutil
 import sys
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -47,7 +50,11 @@ FVLM_MAE_WEIGHTS_PATH = os.getenv("FVLM_MAE_WEIGHTS_PATH", "/app/models/fvlm/mae
 FVLM_BERT_PATH = os.getenv("FVLM_BERT_PATH", "/app/models/fvlm/BiomedVLP-CXR-BERT-specialized")
 FVLM_CONFIG_PATH = os.getenv("FVLM_CONFIG_PATH", None)
 
+# Директория для сохранения DICOM архивов
+DICOM_ARCHIVE_DIR = os.getenv("DICOM_ARCHIVE_DIR", "/app/dicom_archives")
+
 inference_service = None
+processing_lock = asyncio.Lock()
 
 
 class InferenceResponse(BaseModel):
@@ -73,12 +80,17 @@ async def startup_event():
     logger.info(f"LightGBM Model: {LIGHTGBM_MODEL_PATH}")
     logger.info(f"Optimal Threshold: {OPTIMAL_THRESHOLD}")
     logger.info(f"Device: {DEVICE}")
+    logger.info(f"DICOM Archive Directory: {DICOM_ARCHIVE_DIR}")
 
     if DIFFUSION_CLASSIFIER_PATH:
         logger.info(f"Diffusion Classifier: {DIFFUSION_CLASSIFIER_PATH}")
     if DIFFUSION_UNET_PATH:
         logger.info(f"Diffusion UNet: {DIFFUSION_UNET_PATH}")
         logger.info(f"Classifier Scale: {CLASSIFIER_SCALE}")
+
+    # Создаем директорию для сохранения DICOM архивов
+    os.makedirs(DICOM_ARCHIVE_DIR, exist_ok=True)
+    logger.info(f"✅ Директория для архивов создана: {DICOM_ARCHIVE_DIR}")
 
     if not os.path.exists(SUPERVISED_MODEL_PATH):
         raise FileNotFoundError(f"Supervised модель не найдена: {SUPERVISED_MODEL_PATH}")
@@ -127,6 +139,30 @@ async def health():
     return {"status": "healthy"}
 
 
+def save_dicom_archive(temp_file_path: str, study_uid: str, original_filename: str) -> Optional[str]:
+    """
+    Сохраняет DICOM архив в постоянное хранилище.
+    
+    Args:
+        temp_file_path: Путь к временному файлу
+        study_uid: Study UID из DICOM
+        original_filename: Оригинальное имя файла
+    
+    Returns:
+        Путь к сохраненному архиву или None при ошибке
+    """
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_filename = f"{timestamp}_{study_uid}.zip"
+        archive_path = os.path.join(DICOM_ARCHIVE_DIR, archive_filename)
+        
+        shutil.copy2(temp_file_path, archive_path)
+        return archive_path
+    except Exception as e:
+        logger.error(f"Ошибка сохранения архива: {e}")
+        return None
+
+
 @app.post("/predict", response_model=InferenceResponse)
 async def predict(file: UploadFile = File(...)):
     """
@@ -144,37 +180,41 @@ async def predict(file: UploadFile = File(...)):
     if not file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="Поддерживаются только ZIP архивы с DICOM файлами")
 
-    start_time = time.time()
+    async with processing_lock:
+        start_time = time.time()
 
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_file:
+                content = await file.read()
+                temp_file.write(content)
+                temp_file_path = temp_file.name
 
-        logger.info(f"Обрабатываем файл: {file.filename} ({len(content)} bytes)")
+            logger.info(f"Обрабатываем файл: {file.filename} ({len(content)} bytes)")
 
-        result = inference_service.process_zip_archive(temp_file_path)
+            result = inference_service.process_zip_archive(temp_file_path)
+            
+            # Сохраняем архив в постоянное хранилище
+            save_dicom_archive(temp_file_path, result["study_uid"], file.filename)
 
-        os.unlink(temp_file_path)
+            os.unlink(temp_file_path)
 
-        processing_time = time.time() - start_time
-        logger.info(f"✅ Обработка завершена за {processing_time:.2f} сек")
+            processing_time = time.time() - start_time
+            logger.info(f"✅ Обработка завершена за {processing_time:.2f} сек")
 
-        # Для нормы возвращаем пустой список патологий
-        top_pathologies = result.get("top_pathologies", []) if result["pathology"] == 1 else []
+            # Для нормы возвращаем пустой список патологий
+            top_pathologies = result.get("top_pathologies", []) if result["pathology"] == 1 else []
 
-        return InferenceResponse(
-            study_uid=result["study_uid"],
-            series_uid=result["series_uid"],
-            probability_of_pathology=result["probability_of_pathology"],
-            pathology=result["pathology"],
-            top_pathologies=top_pathologies,
-            processing_status="Success",
-            time_of_processing=processing_time,
-        )
+            return InferenceResponse(
+                study_uid=result["study_uid"],
+                series_uid=result["series_uid"],
+                probability_of_pathology=result["probability_of_pathology"],
+                pathology=result["pathology"],
+                top_pathologies=top_pathologies,
+                processing_status="Success",
+                time_of_processing=processing_time,
+            )
 
-    except Exception as e:
+        except Exception as e:
         logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}")
         processing_time = time.time() - start_time
 
