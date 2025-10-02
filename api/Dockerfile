@@ -58,7 +58,7 @@ EXPOSE 8000
 ENV SUPERVISED_MODEL_PATH=/app/best_models/supervised_model.pt
 ENV CTCLIP_MODEL_PATH=/app/best_models/CT_VocabFine_v2.pt
 ENV LIGHTGBM_MODEL_PATH=/app/best_models/lightgbm_model.pkl
-ENV OPTIMAL_THRESHOLD=0.66
+ENV OPTIMAL_THRESHOLD=0.6
 
 # FVLM пути
 ENV FVLM_MODEL_PATH=/app/fvlm/weights/fvlm_model.pth

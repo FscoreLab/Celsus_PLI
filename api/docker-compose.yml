@@ -13,7 +13,7 @@ services:
       - SUPERVISED_MODEL_PATH=/app/models/supervised_model.pt
       - CTCLIP_MODEL_PATH=/app/models/CT_VocabFine_v2.pt
       - LIGHTGBM_MODEL_PATH=/app/models/lightgbm_model.pkl
-      - OPTIMAL_THRESHOLD=0.66
+      - OPTIMAL_THRESHOLD=0.6
       - DEVICE=cuda
       - DIFFUSION_CLASSIFIER_PATH=/app/models/ct_classifier.pt
       - DIFFUSION_UNET_PATH=/app/models/diffusion_checkpoint.pt

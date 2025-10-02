@@ -1282,10 +1282,21 @@ class LightGBMInference:
             # Собираем топ-5 положительных SHAP вкладов
             top_shap_indices = np.argsort(shap_values_flat)[-5:][::-1]
             top_shap_features = {}
+            top_shap_with_probs = []
             for idx in top_shap_indices:
                 if shap_values_flat[idx] > 0:  # Только положительные вклады
                     feat_name = features_df.columns[idx]
-                    top_shap_features[feat_name] = float(shap_values_flat[idx])
+                    feat_shap = float(shap_values_flat[idx])
+                    feat_prob = float(features_df.iloc[0, idx])
+                    top_shap_features[feat_name] = feat_shap
+                    top_shap_with_probs.append({
+                        "feature": feat_name,
+                        "shap": feat_shap,
+                        "probability": feat_prob
+                    })
+            logger.info(f"Top-5 SHAP features: {top_shap_features}")
+            for item in top_shap_with_probs:
+                logger.info(f"  {item['feature']}: SHAP={item['shap']:.4f}, Probability={item['probability']:.4f}")
 
             if most_dangerous_feature is not None:
                 shap_value = shap_values_flat[max_shap_idx]
