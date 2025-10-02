@@ -836,8 +836,12 @@ class DiffusionReconstructionInference:
             sys.path.insert(0, diffusion_path)
 
         from diffusion_anomaly.gaussian_diffusion import (
-            GaussianDiffusion, LossType, ModelMeanType, ModelVarType,
-            get_named_beta_schedule)
+            GaussianDiffusion,
+            LossType,
+            ModelMeanType,
+            ModelVarType,
+            get_named_beta_schedule,
+        )
         from diffusion_anomaly.unet import UNetModel
 
         # Создаем UNet модель

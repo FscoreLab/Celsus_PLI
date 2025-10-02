@@ -251,21 +251,21 @@ async def predict(file: UploadFile = File(...)):
             # Проверяем тип исключения напрямую
             exception_class_name = e.__class__.__name__
 
-            if (exception_class_name == "LungsNotFoundError" or
-                    "Lungs not found" in error_message or
-                    "too low relative percentage" in error_message):
+            if (
+                exception_class_name == "LungsNotFoundError"
+                or "Lungs not found" in error_message
+                or "too low relative percentage" in error_message
+            ):
                 status_code = 422  # Unprocessable Entity
-                error_message = (
-                    "Легкие не найдены на изображении или их "
-                    "относительный процент слишком мал."
-                )
+                error_message = "Легкие не найдены на изображении или их " "относительный процент слишком мал."
                 logger.warning(f"⚠️ Легкие не найдены: {file.filename}")
-            elif (exception_class_name == "InvalidLungsLengthError" or
-                    ("too small" in error_message and "mm" in error_message)):
+            elif exception_class_name == "InvalidLungsLengthError" or (
+                "too small" in error_message and "mm" in error_message
+            ):
                 status_code = 422  # Unprocessable Entity
                 # Извлекаем сообщение об ошибке, если оно есть
-                if hasattr(e, 'detail') and isinstance(e.detail, dict):
-                    error_message = e.detail.get('message', str(e))
+                if hasattr(e, "detail") and isinstance(e.detail, dict):
+                    error_message = e.detail.get("message", str(e))
                 else:
                     error_message = f"Длина легких слишком мала. {error_message}"
                 logger.warning(f"⚠️ Короткие легкие: {file.filename}")
@@ -363,21 +363,21 @@ async def predict_nifti(file: UploadFile = File(...)):
             # Проверяем тип исключения напрямую
             exception_class_name = e.__class__.__name__
 
-            if (exception_class_name == "LungsNotFoundError" or
-                    "Lungs not found" in error_message or
-                    "too low relative percentage" in error_message):
+            if (
+                exception_class_name == "LungsNotFoundError"
+                or "Lungs not found" in error_message
+                or "too low relative percentage" in error_message
+            ):
                 status_code = 422
-                error_message = (
-                    "Легкие не найдены на изображении или их "
-                    "относительный процент слишком мал."
-                )
+                error_message = "Легкие не найдены на изображении или их " "относительный процент слишком мал."
                 logger.warning(f"⚠️ Легкие не найдены: {file.filename}")
-            elif (exception_class_name == "InvalidLungsLengthError" or
-                    ("too small" in error_message and "mm" in error_message)):
+            elif exception_class_name == "InvalidLungsLengthError" or (
+                "too small" in error_message and "mm" in error_message
+            ):
                 status_code = 422
                 # Извлекаем сообщение об ошибке, если оно есть
-                if hasattr(e, 'detail') and isinstance(e.detail, dict):
-                    error_message = e.detail.get('message', str(e))
+                if hasattr(e, "detail") and isinstance(e.detail, dict):
+                    error_message = e.detail.get("message", str(e))
                 else:
                     error_message = f"Длина легких слишком мала. {error_message}"
                 logger.warning(f"⚠️ Короткие легкие: {file.filename}")
