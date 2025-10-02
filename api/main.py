@@ -215,45 +215,45 @@ async def predict(file: UploadFile = File(...)):
             )
 
         except Exception as e:
-        logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}")
-        processing_time = time.time() - start_time
+            logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}")
+            processing_time = time.time() - start_time
 
-        try:
-            if "temp_file_path" in locals():
-                os.unlink(temp_file_path)
-        except Exception:
-            pass
+            try:
+                if "temp_file_path" in locals():
+                    os.unlink(temp_file_path)
+            except Exception:
+                pass
 
-        # Проверяем специфичные ошибки
-        error_message = str(e)
-        status_code = 500
-        
-        if "Lungs not found" in error_message or "too low relative percentage" in error_message:
-            status_code = 422  # Unprocessable Entity
-            error_message = "Легкие не найдены на изображении или их относительный процент слишком мал."
-            logger.warning(f"⚠️ Легкие не найдены: {file.filename}")
-        elif "too small" in error_message and "mm" in error_message:
-            status_code = 422  # Unprocessable Entity
-            error_message = f"Длина легких слишком мала. {error_message}"
-            logger.warning(f"⚠️ Короткие легкие: {file.filename}")
-        elif "Не найдено серий с минимальным количеством валидных срезов" in error_message:
-            status_code = 422  # Unprocessable Entity
-            error_message = "Недостаточно срезов для обработки (требуется минимум 20 валидных срезов)."
-            logger.warning(f"⚠️ Недостаточно срезов: {file.filename}")
+            # Проверяем специфичные ошибки
+            error_message = str(e)
+            status_code = 500
+            
+            if "Lungs not found" in error_message or "too low relative percentage" in error_message:
+                status_code = 422  # Unprocessable Entity
+                error_message = "Легкие не найдены на изображении или их относительный процент слишком мал."
+                logger.warning(f"⚠️ Легкие не найдены: {file.filename}")
+            elif "too small" in error_message and "mm" in error_message:
+                status_code = 422  # Unprocessable Entity
+                error_message = f"Длина легких слишком мала. {error_message}"
+                logger.warning(f"⚠️ Короткие легкие: {file.filename}")
+            elif "Не найдено серий с минимальным количеством валидных срезов" in error_message:
+                status_code = 422  # Unprocessable Entity
+                error_message = "Недостаточно срезов для обработки (требуется минимум 20 валидных срезов)."
+                logger.warning(f"⚠️ Недостаточно срезов: {file.filename}")
 
-        return JSONResponse(
-            status_code=status_code,
-            content={
-                "study_uid": "",
-                "series_uid": "",
-                "probability_of_pathology": None,
-                "pathology": None,
-                "most_dangerous_pathology_type": None,
-                "processing_status": "Failure",
-                "time_of_processing": processing_time,
-                "error": error_message,
-            },
-        )
+            return JSONResponse(
+                status_code=status_code,
+                content={
+                    "study_uid": "",
+                    "series_uid": "",
+                    "probability_of_pathology": None,
+                    "pathology": None,
+                    "most_dangerous_pathology_type": None,
+                    "processing_status": "Failure",
+                    "time_of_processing": processing_time,
+                    "error": error_message,
+                },
+            )
 
 
 @app.post("/predict_nifti", response_model=InferenceResponse)
@@ -273,76 +273,77 @@ async def predict_nifti(file: UploadFile = File(...)):
     if not file.filename.endswith(".nii.gz") and not file.filename.endswith(".nii"):
         raise HTTPException(status_code=400, detail="Поддерживаются только NIFTI файлы (.nii.gz или .nii)")
 
-    start_time = time.time()
-
-    try:
-        # Сохраняем NIFTI файл во временную директорию
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".nii.gz") as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
-
-        logger.info(f"Обрабатываем NIFTI файл: {file.filename} ({len(content)} bytes)")
-
-        # Генерируем dummy study_uid и series_uid из имени файла
-        volume_name = file.filename.replace(".nii.gz", "").replace(".nii", "")
-        study_uid = f"nifti_{volume_name}"
-        series_uid = f"nifti_{volume_name}_series"
-
-        # Вызываем process_nifti_file напрямую
-        result = inference_service.process_nifti_file(temp_file_path, study_uid, series_uid)
-
-        os.unlink(temp_file_path)
-
-        processing_time = time.time() - start_time
-        logger.info(f"✅ Обработка завершена за {processing_time:.2f} сек")
-
-        return InferenceResponse(
-            study_uid=result["study_uid"],
-            series_uid=result["series_uid"],
-            probability_of_pathology=result["probability_of_pathology"],
-            pathology=result["pathology"],
-            top_pathologies=result["top_pathologies"],
-            processing_status="Success",
-            time_of_processing=processing_time,
-        )
-
-    except Exception as e:
-        logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}")
-        processing_time = time.time() - start_time
+    async with processing_lock:
+        start_time = time.time()
 
         try:
-            if "temp_file_path" in locals():
-                os.unlink(temp_file_path)
-        except Exception:
-            pass
+            # Сохраняем NIFTI файл во временную директорию
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".nii.gz") as temp_file:
+                content = await file.read()
+                temp_file.write(content)
+                temp_file_path = temp_file.name
 
-        # Обработка специфичных ошибок
-        error_message = str(e)
-        status_code = 500
-        
-        if "Lungs not found" in error_message or "too low relative percentage" in error_message:
-            status_code = 422
-            error_message = "Легкие не найдены на изображении или их относительный процент слишком мал."
-            logger.warning(f"⚠️ Легкие не найдены: {file.filename}")
-        elif "too small" in error_message and "mm" in error_message:
-            status_code = 422
-            error_message = f"Длина легких слишком мала. {error_message}"
-            logger.warning(f"⚠️ Короткие легкие: {file.filename}")
+            logger.info(f"Обрабатываем NIFTI файл: {file.filename} ({len(content)} bytes)")
 
-        return JSONResponse(
-            status_code=status_code,
-            content={
-                "study_uid": "",
-                "series_uid": "",
-                "probability_of_pathology": None,
-                "pathology": None,
-                "top_pathologies": [],
-                "processing_status": "Failure",
-                "time_of_processing": processing_time,
-                "error": error_message,
-            },
-        )
+            # Генерируем dummy study_uid и series_uid из имени файла
+            volume_name = file.filename.replace(".nii.gz", "").replace(".nii", "")
+            study_uid = f"nifti_{volume_name}"
+            series_uid = f"nifti_{volume_name}_series"
+
+            # Вызываем process_nifti_file напрямую
+            result = inference_service.process_nifti_file(temp_file_path, study_uid, series_uid)
+
+            os.unlink(temp_file_path)
+
+            processing_time = time.time() - start_time
+            logger.info(f"✅ Обработка завершена за {processing_time:.2f} сек")
+
+            return InferenceResponse(
+                study_uid=result["study_uid"],
+                series_uid=result["series_uid"],
+                probability_of_pathology=result["probability_of_pathology"],
+                pathology=result["pathology"],
+                top_pathologies=result["top_pathologies"],
+                processing_status="Success",
+                time_of_processing=processing_time,
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}")
+            processing_time = time.time() - start_time
+
+            try:
+                if "temp_file_path" in locals():
+                    os.unlink(temp_file_path)
+            except Exception:
+                pass
+
+            # Обработка специфичных ошибок
+            error_message = str(e)
+            status_code = 500
+            
+            if "Lungs not found" in error_message or "too low relative percentage" in error_message:
+                status_code = 422
+                error_message = "Легкие не найдены на изображении или их относительный процент слишком мал."
+                logger.warning(f"⚠️ Легкие не найдены: {file.filename}")
+            elif "too small" in error_message and "mm" in error_message:
+                status_code = 422
+                error_message = f"Длина легких слишком мала. {error_message}"
+                logger.warning(f"⚠️ Короткие легкие: {file.filename}")
+
+            return JSONResponse(
+                status_code=status_code,
+                content={
+                    "study_uid": "",
+                    "series_uid": "",
+                    "probability_of_pathology": None,
+                    "pathology": None,
+                    "top_pathologies": [],
+                    "processing_status": "Failure",
+                    "time_of_processing": processing_time,
+                    "error": error_message,
+                },
+            )
 
 
 if __name__ == "__main__":

@@ -32,4 +32,5 @@ services:
     volumes:
       - /tmp:/tmp
       - ../best_models:/app/models
+      - /astral-data/Minio/kate/data/interim/celsus_pli_dicom_zips:/app/dicom_archives
     restart: unless-stopped
