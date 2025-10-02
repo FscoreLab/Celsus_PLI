@@ -40,12 +40,13 @@ class CUDACleanupMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
         finally:
-            # Агрессивная очистка CUDA памяти после КАЖДОГО запроса
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-            gc.collect()
-            logger.debug("🧹 CUDA память очищена после запроса")
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                gc.collect()
+                logger.debug("🧹 CUDA память очищена после запроса")
+            except Exception as e:
+                logger.warning(f"Ошибка при очистке CUDA памяти: {e}")
 
 
 app = FastAPI(
