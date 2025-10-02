@@ -271,20 +271,22 @@ class DICOMValidator:
             return result
 
         total_slices = 0  # Общее количество срезов (с учетом мультифрейма)
-        
+
         for file_path in dicom_paths:
             validation = DICOMValidator.validate_dicom_file(file_path, check_pixels=check_pixels)
 
             if validation["can_process"]:
                 result["num_valid"] += 1
                 result["valid_files"].append(file_path)
-                
+
                 # Проверяем количество фреймов (для мультифрейм DICOM)
                 try:
                     dcm = pydicom.dcmread(file_path, stop_before_pixels=True, force=True)
-                    num_frames = getattr(dcm, 'NumberOfFrames', None)
+                    num_frames = getattr(dcm, "NumberOfFrames", None)
                     if num_frames and int(num_frames) > 1:
-                        logger.info(f"Обнаружен мультифрейм DICOM: {os.path.basename(file_path)} ({num_frames} фреймов)")
+                        logger.info(
+                            f"Обнаружен мультифрейм DICOM: {os.path.basename(file_path)} ({num_frames} фреймов)"
+                        )
                         total_slices += int(num_frames)
                     else:
                         total_slices += 1
@@ -298,7 +300,7 @@ class DICOMValidator:
 
         # Сохраняем общее количество срезов
         result["total_slices"] = total_slices
-        
+
         # Используем total_slices вместо num_valid для проверки минимального количества срезов
         if total_slices < DICOMValidator.MIN_SLICES:
             result["errors"].append(
@@ -1015,7 +1017,6 @@ class LightGBMInference:
         self.supervised_pathologies = MOSMED_PATHOLOGIES
         self.ctclip_pathologies = CTCLIP_PATHOLOGIES
 
-
     @staticmethod
     def _ensure_prefixed(d: Dict[str, float], prefix: str) -> Dict[str, float]:
         """Возвращает dict с гарантированным префиксом у ключей."""
@@ -1028,7 +1029,6 @@ class LightGBMInference:
             else:
                 prefixed[f"{prefix}{k}"] = float(v)
         return prefixed
-
 
     def load_model(self):
         """Загружает LightGBM модель."""
@@ -1105,8 +1105,7 @@ class LightGBMInference:
             vals = [v for k, v in features.items() if k.startswith(prefix)]
             if exclude_normal:
                 # Исключаем значения с ключом, содержащим "normal"
-                vals = [v for k, v in features.items() 
-                       if k.startswith(prefix) and "normal" not in k.lower()]
+                vals = [v for k, v in features.items() if k.startswith(prefix) and "normal" not in k.lower()]
             return vals
 
         # Вычисляем агрегированные фичи
@@ -1121,7 +1120,7 @@ class LightGBMInference:
         features["ctclip_max_probability"] = np.max(ctclip_values)
         features["supervised_top3_mean"] = np.mean(sorted(supervised_values, reverse=True)[:3])
         features["ctclip_top3_mean"] = np.mean(sorted(ctclip_values, reverse=True)[:3])
-        
+
         # Агрегированные фичи для MedNeXt (kolyan_)
         if mednext_vals:
             features["kolyan_mean"] = np.mean(mednext_vals)
@@ -1131,7 +1130,7 @@ class LightGBMInference:
             features["kolyan_mean"] = 0.0
             features["kolyan_max"] = 0.0
             features["kolyan_top3_mean"] = 0.0
-        
+
         # Агрегированные фичи для FVLM (okhr_)
         if fvlm_vals:
             features["okhr_mean"] = np.mean(fvlm_vals)
@@ -1145,19 +1144,20 @@ class LightGBMInference:
         # Добавляем групповые фичи для CT-CLIP
         for group_name, pathologies in CTCLIP_PATHOLOGY_GROUPS.items():
             # Собираем вероятности для патологий в группе
-            group_values = [features[f"ctclip_{pathology}"] for pathology in pathologies 
-                            if f"ctclip_{pathology}" in features]
-            
+            group_values = [
+                features[f"ctclip_{pathology}"] for pathology in pathologies if f"ctclip_{pathology}" in features
+            ]
+
             if group_values:
                 # Max - максимальная вероятность в группе
                 features[f"ctclip_group_{group_name}_max"] = np.max(group_values)
-                
+
                 # Mean - средняя вероятность в группе
                 features[f"ctclip_group_{group_name}_mean"] = np.mean(group_values)
-                
+
                 # Count high - количество патологий с p > 0.5
                 features[f"ctclip_group_{group_name}_count_high"] = np.sum(np.array(group_values) > 0.5)
-                
+
                 # Std - стандартное отклонение (для групп с >1 патологией)
                 if len(group_values) > 1:
                     features[f"ctclip_group_{group_name}_std"] = np.std(group_values)
@@ -1213,40 +1213,49 @@ class LightGBMInference:
 
         # Находим топ-патологию от каждой из 3 моделей: MedNeXt (kolyan), FVLM (okhr), CT-CLIP (ctclip)
         top_pathologies = []
-        
+
         # 1. MedNeXt (kolyan_) - исключаем normal
-        kolyan_features = {col: float(features_df.iloc[0][col]) 
-                          for col in features_df.columns 
-                          if col.startswith('kolyan_') and 'normal' not in col.lower() 
-                          and not any(x in col for x in ['_mean', '_max', '_top3', '_std'])}
+        kolyan_features = {
+            col: float(features_df.iloc[0][col])
+            for col in features_df.columns
+            if col.startswith("kolyan_")
+            and "normal" not in col.lower()
+            and not any(x in col for x in ["_mean", "_max", "_top3", "_std"])
+        }
         if kolyan_features:
             top_kolyan_feat = max(kolyan_features.items(), key=lambda x: x[1])
             pathology_name = self._feature_to_pathology_name(top_kolyan_feat[0])
             logger.info(f"MedNeXt топ-патология: {pathology_name} (prob={top_kolyan_feat[1]:.4f})")
             top_pathologies.append(pathology_name)
-        
+
         # 2. FVLM (okhr_)
-        okhr_features = {col: float(features_df.iloc[0][col]) 
-                        for col in features_df.columns 
-                        if col.startswith('okhr_') and 'normal' not in col.lower()
-                        and not any(x in col for x in ['_mean', '_max', '_top3', '_std'])}
+        okhr_features = {
+            col: float(features_df.iloc[0][col])
+            for col in features_df.columns
+            if col.startswith("okhr_")
+            and "normal" not in col.lower()
+            and not any(x in col for x in ["_mean", "_max", "_top3", "_std"])
+        }
         if okhr_features:
             top_okhr_feat = max(okhr_features.items(), key=lambda x: x[1])
             pathology_name = self._feature_to_pathology_name(top_okhr_feat[0])
             logger.info(f"FVLM топ-патология: {pathology_name} (prob={top_okhr_feat[1]:.4f})")
             top_pathologies.append(pathology_name)
-        
+
         # 3. CT-CLIP (ctclip_)
-        ctclip_features = {col: float(features_df.iloc[0][col]) 
-                          for col in features_df.columns 
-                          if col.startswith('ctclip_') and 'normal' not in col.lower()
-                          and not any(x in col for x in ['_mean', '_max', '_top3', '_std', '_group_'])}
+        ctclip_features = {
+            col: float(features_df.iloc[0][col])
+            for col in features_df.columns
+            if col.startswith("ctclip_")
+            and "normal" not in col.lower()
+            and not any(x in col for x in ["_mean", "_max", "_top3", "_std", "_group_"])
+        }
         if ctclip_features:
             top_ctclip_feat = max(ctclip_features.items(), key=lambda x: x[1])
             pathology_name = self._feature_to_pathology_name(top_ctclip_feat[0])
             logger.info(f"CT-CLIP топ-патология: {pathology_name} (prob={top_ctclip_feat[1]:.4f})")
             top_pathologies.append(pathology_name)
-        
+
         # Убираем дубликаты, сохраняя порядок
         seen = set()
         unique_pathologies = []
@@ -1254,7 +1263,7 @@ class LightGBMInference:
             if p not in seen:
                 seen.add(p)
                 unique_pathologies.append(p)
-        
+
         logger.info(f"Топ-патологии (уникальные): {unique_pathologies}")
 
         return {
@@ -1279,20 +1288,20 @@ class LightGBMInference:
         """
         # Удаляем префиксы моделей
         prefixes_to_remove = ["supervised_", "ctclip_", "kolyan_", "okhr_", "diffusion_classifier_", "diffusion_"]
-        
+
         result = feature_name
         for prefix in prefixes_to_remove:
             if result.startswith(prefix):
                 result = result.replace(prefix, "", 1)
                 break
-        
+
         # Заменяем подчеркивания на пробелы
         result = result.replace("_", " ")
-        
+
         # Приводим первую букву к заглавной
         if result:
             result = result[0].upper() + result[1:]
-        
+
         return result
 
     def unload(self):
@@ -1374,7 +1383,8 @@ class MedNeXtInferenceService:
     - Context manager support.
     """
 
-    def __init__(self,
+    def __init__(
+        self,
         device: str = "cuda",
         # Optional defaults: if omitted, your init_model() will use DEFAULT_* constants.
     ):
@@ -1428,7 +1438,6 @@ class MedNeXtInferenceService:
             raise RuntimeError("Model not loaded. Call load_model() first.")
         return list(self.artifacts.classes)
 
-
     def predict(self, volume_path: Union[str, Path]) -> Dict[str, float]:
         """
         Run inference on a single volume (NIfTI or DICOM ZIP).
@@ -1457,7 +1466,7 @@ class LightGBMInferenceService:
         diffusion_classifier_path: str = None,
         diffusion_unet_path: str = None,
         classifier_scale: float = 150.0,
-        use_diffusion_reconstruction: bool = False, 
+        use_diffusion_reconstruction: bool = False,
         # FVLM параметры
         fvlm_model_path: str = None,
         fvlm_mae_weights_path: str = None,
@@ -1465,6 +1474,9 @@ class LightGBMInferenceService:
         fvlm_config_path: str = None,
         # MedNext
         use_mednext: bool = True,
+        # Thoracic модель
+        lightgbm_thoracic_model_path: str = None,
+        optimal_threshold_thoracic: float = 0.5,
     ):
         self.supervised_model_path = supervised_model_path
         self.ctclip_model_path = ctclip_model_path
@@ -1474,10 +1486,20 @@ class LightGBMInferenceService:
         self.use_fvlm = fvlm_model_path is not None
         self.use_diffusion_reconstruction = use_diffusion_reconstruction
         self.use_mednext = use_mednext
+        self.use_thoracic = lightgbm_thoracic_model_path is not None
 
         self.supervised_inference = SupervisedModelInference(supervised_model_path, device)
         self.ctclip_inference = UniversalCTInference(model_path=ctclip_model_path, device=device, verbose=False)
         self.lightgbm_inference = LightGBMInference(lightgbm_model_path, optimal_threshold)
+
+        # Thoracic модель (опциональная)
+        self.lightgbm_thoracic_inference = None
+        if self.use_thoracic:
+            logger.info("Инициализация LightGBM Thoracic модели...")
+            self.lightgbm_thoracic_inference = LightGBMInference(
+                lightgbm_thoracic_model_path, optimal_threshold_thoracic
+            )
+            logger.info("LightGBM Thoracic inference инициализирован")
 
         # Инициализируем diffusion модели если пути указаны
         self.diffusion_classifier_inference = None
@@ -1560,7 +1582,7 @@ class LightGBMInferenceService:
         ctclip_preds = {}
         for pathology, prob in ctclip_result["pathology_predictions"].items():
             ctclip_preds[f"ctclip_{pathology}"] = prob
-        
+
         logger.info(f"CT-CLIP predictions (first 5): {dict(list(ctclip_preds.items())[:5])}")
 
         # Выгружаем CT-CLIP модель
@@ -1579,7 +1601,6 @@ class LightGBMInferenceService:
             logger.info(f"MedNeXt predictions: {mednext_preds}")
             self.mednext_inference.unload_model()
             logger.info("MedNeXt модель выгружена")
-
 
         # 5. Diffusion модели (если включены)
         diffusion_classifier_preds = None
@@ -1613,7 +1634,7 @@ class LightGBMInferenceService:
                 torch.cuda.empty_cache()
             logger.info("Diffusion classifier выгружен")
 
-        # 6. LightGBM модель
+        # 6. LightGBM модель (основная)
         logger.info("Загружаем LightGBM модель...")
         self.lightgbm_inference.load_model()
 
@@ -1635,6 +1656,19 @@ class LightGBMInferenceService:
         self.lightgbm_inference.unload()
         logger.info("LightGBM модель выгружена")
 
+        # 7. LightGBM Thoracic модель (опциональная)
+        lgbm_thoracic_result = None
+        if self.use_thoracic and self.lightgbm_thoracic_inference:
+            logger.info("Загружаем LightGBM Thoracic модель...")
+            self.lightgbm_thoracic_inference.load_model()
+
+            # Используем те же фичи
+            lgbm_thoracic_result = self.lightgbm_thoracic_inference.predict(features_df)
+
+            # Выгружаем Thoracic модель
+            self.lightgbm_thoracic_inference.unload()
+            logger.info("LightGBM Thoracic модель выгружена")
+
         # Формируем финальный результат
         result = {
             "study_uid": study_uid,
@@ -1644,13 +1678,20 @@ class LightGBMInferenceService:
             "top_pathologies": lgbm_result["top_pathologies"],
         }
 
+        # Добавляем результаты thoracic модели если есть
+        if lgbm_thoracic_result:
+            result["probability_of_pathology_thoracic"] = lgbm_thoracic_result["probability"]
+            result["pathology_thoracic"] = int(lgbm_thoracic_result["prediction"])
+        else:
+            result["probability_of_pathology_thoracic"] = None
+            result["pathology_thoracic"] = None
+
         if result["pathology"] == 0:
             result["most_dangerous_pathology_type"] = None
 
         logger.info(f"Result: {result}")
 
-        return result     
-
+        return result
 
     def process_zip_archive(self, zip_path: str) -> Dict:
         """

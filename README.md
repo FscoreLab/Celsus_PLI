@@ -18,7 +18,9 @@
 4. **fVLM Model** - предобученная модель на основе визуального и текстового энкодера + тонкое контрастивное обучение (благодаря известным анатомическим структурам от TotalSegmentator модель училась сопоставлять каждую часть изображения с её куском текста) (https://openreview.net/pdf?id=nYpPAT4L3D)
 5. **MedNeXt Model** - supervised-модель на базе архитектуры MedNext с multilabel-классификацией на 22 класса
 
-Предсказания моделей объединяются с помощью модели **LightGBM** на основе градиентного бустинга
+Предсказания моделей объединяются с помощью двух **LightGBM** классификаторов на основе градиентного бустинга:
+- **Основная модель** — универсальная модель для всех типов патологий
+- **Thoracic модель** — специализированная модель для патологий области органов грудной клетки (ОГК)
 
 ---
 
@@ -254,6 +256,8 @@ curl -X POST "http://localhost:8000/predict" \
   "probability_of_pathology": 0.87,
   "pathology": 1,
   "top_pathologies": ["Pneumonia", "Consolidation", "Atelectasis"],
+  "probability_of_pathology_thoracic": 0.92,
+  "pathology_thoracic": 1,
   "processing_status": "Success",
   "time_of_processing": 45.67
 }
@@ -262,9 +266,11 @@ curl -X POST "http://localhost:8000/predict" \
 **Описание полей:**
 - `study_uid` — уникальный идентификатор исследования (DICOM StudyInstanceUID)
 - `series_uid` — уникальный идентификатор серии (DICOM SeriesInstanceUID)
-- `probability_of_pathology` — вероятность наличия патологии (0.0 - 1.0)
-- `pathology` — классификация: 0 (норма) или 1 (патология)
-- `top_pathologies` — список топ-патологий
+- `probability_of_pathology` — вероятность наличия патологии (основная модель, 0.0 - 1.0)
+- `pathology` — классификация основной модели: 0 (норма) или 1 (патология)
+- `top_pathologies` — список топ-патологий от основной модели
+- `probability_of_pathology_thoracic` — вероятность наличия патологии (thoracic модель, 0.0 - 1.0)
+- `pathology_thoracic` — классификация thoracic модели: 0 (норма) или 1 (патология)
 - `processing_status` — статус обработки: "Success" или "Failure"
 - `time_of_processing` — время обработки в секундах
 

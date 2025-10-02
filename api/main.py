@@ -37,8 +37,12 @@ app = FastAPI(
 SUPERVISED_MODEL_PATH = os.getenv("SUPERVISED_MODEL_PATH", "/app/models/supervised_model.pt")
 CTCLIP_MODEL_PATH = os.getenv("CTCLIP_MODEL_PATH", "/app/models/CT_VocabFine_v2.pt")
 LIGHTGBM_MODEL_PATH = os.getenv("LIGHTGBM_MODEL_PATH", "/app/models/lightgbm_model.pkl")
-OPTIMAL_THRESHOLD = float(os.getenv("OPTIMAL_THRESHOLD", "0.4"))
+OPTIMAL_THRESHOLD = float(os.getenv("OPTIMAL_THRESHOLD", "0.5"))
 DEVICE = os.getenv("DEVICE", "cuda")
+
+# Thoracic модель (опциональная)
+LIGHTGBM_THORACIC_MODEL_PATH = os.getenv("LIGHTGBM_THORACIC_MODEL_PATH", None)
+OPTIMAL_THRESHOLD_THORACIC = float(os.getenv("OPTIMAL_THRESHOLD_THORACIC", "0.5"))
 
 DIFFUSION_CLASSIFIER_PATH = os.getenv("DIFFUSION_CLASSIFIER_PATH", None)
 DIFFUSION_UNET_PATH = os.getenv("DIFFUSION_UNET_PATH", None)
@@ -65,6 +69,9 @@ class InferenceResponse(BaseModel):
     probability_of_pathology: float
     pathology: int  # 0 (норма) или 1 (патология)
     top_pathologies: list[str]  # Топ-патологии от 3 моделей: MedNeXt, FVLM, CT-CLIP
+    # Thoracic модель (специализированная для ОГК)
+    probability_of_pathology_thoracic: Optional[float]
+    pathology_thoracic: Optional[int]
     processing_status: str
     time_of_processing: float
 
@@ -81,6 +88,10 @@ async def startup_event():
     logger.info(f"Optimal Threshold: {OPTIMAL_THRESHOLD}")
     logger.info(f"Device: {DEVICE}")
     logger.info(f"DICOM Archive Directory: {DICOM_ARCHIVE_DIR}")
+
+    if LIGHTGBM_THORACIC_MODEL_PATH:
+        logger.info(f"LightGBM Thoracic Model: {LIGHTGBM_THORACIC_MODEL_PATH}")
+        logger.info(f"Optimal Threshold Thoracic: {OPTIMAL_THRESHOLD_THORACIC}")
 
     if DIFFUSION_CLASSIFIER_PATH:
         logger.info(f"Diffusion Classifier: {DIFFUSION_CLASSIFIER_PATH}")
@@ -118,6 +129,13 @@ async def startup_event():
         fvlm_mae_weights_path=FVLM_MAE_WEIGHTS_PATH if os.path.exists(FVLM_MAE_WEIGHTS_PATH) else None,
         fvlm_bert_path=FVLM_BERT_PATH if os.path.exists(FVLM_BERT_PATH) else None,
         fvlm_config_path=FVLM_CONFIG_PATH,
+        # Thoracic модель
+        lightgbm_thoracic_model_path=(
+            LIGHTGBM_THORACIC_MODEL_PATH
+            if LIGHTGBM_THORACIC_MODEL_PATH and os.path.exists(LIGHTGBM_THORACIC_MODEL_PATH)
+            else None
+        ),
+        optimal_threshold_thoracic=OPTIMAL_THRESHOLD_THORACIC,
     )
 
     logger.info("✅ Сервис инициализирован успешно!")
@@ -210,6 +228,8 @@ async def predict(file: UploadFile = File(...)):
                 probability_of_pathology=result["probability_of_pathology"],
                 pathology=result["pathology"],
                 top_pathologies=top_pathologies,
+                probability_of_pathology_thoracic=result.get("probability_of_pathology_thoracic"),
+                pathology_thoracic=result.get("pathology_thoracic"),
                 processing_status="Success",
                 time_of_processing=processing_time,
             )
@@ -298,12 +318,17 @@ async def predict_nifti(file: UploadFile = File(...)):
             processing_time = time.time() - start_time
             logger.info(f"✅ Обработка завершена за {processing_time:.2f} сек")
 
+            # Для нормы возвращаем пустой список патологий
+            top_pathologies = result.get("top_pathologies", []) if result["pathology"] == 1 else []
+
             return InferenceResponse(
                 study_uid=result["study_uid"],
                 series_uid=result["series_uid"],
                 probability_of_pathology=result["probability_of_pathology"],
                 pathology=result["pathology"],
-                top_pathologies=result["top_pathologies"],
+                top_pathologies=top_pathologies,
+                probability_of_pathology_thoracic=result.get("probability_of_pathology_thoracic"),
+                pathology_thoracic=result.get("pathology_thoracic"),
                 processing_status="Success",
                 time_of_processing=processing_time,
             )

@@ -43,6 +43,7 @@ def process_single_archive(api_url: str, archive_path: Path) -> dict:
                 )
             else:
                 result["most_dangerous_pathology_type"] = ""
+
             result["path_to_study"] = str(archive_path.absolute())
             result["processing_time_total"] = processing_time
             return result
@@ -142,6 +143,9 @@ def batch_process(api_url: str, input_dir: Path, output_excel: Path):
     # Опциональные колонки
     optional_columns = [
         "most_dangerous_pathology_type",
+        # Thoracic модель
+        "probability_of_pathology_thoracic",
+        "pathology_thoracic",
         "error",
     ]
 
