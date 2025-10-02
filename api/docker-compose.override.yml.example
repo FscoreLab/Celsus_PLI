@@ -7,7 +7,11 @@ version: '3.8'
 
 services:
   ct-clip-api:
+    environment:
+      # Путь для сохранения DICOM архивов внутри контейнера
+      # Если не указать - архивы не будут сохраняться (не будет забиваться диск)
+      - DICOM_ARCHIVE_DIR=/app/dicom_archives
     volumes:
-      # Раскомментируйте и укажите путь для сохранения DICOM архивов на хосте
+      # Укажите путь для сохранения DICOM архивов на хосте
       # Формат: <путь_на_хосте>:/app/dicom_archives
       - /astral-data/Minio/kate/data/interim/hackathon_dicoms:/app/dicom_archives

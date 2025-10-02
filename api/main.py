@@ -51,7 +51,8 @@ FVLM_BERT_PATH = os.getenv("FVLM_BERT_PATH", "/app/models/fvlm/BiomedVLP-CXR-BER
 FVLM_CONFIG_PATH = os.getenv("FVLM_CONFIG_PATH", None)
 
 # Директория для сохранения DICOM архивов
-DICOM_ARCHIVE_DIR = os.getenv("DICOM_ARCHIVE_DIR", "/app/dicom_archives")
+DICOM_ARCHIVE_DIR = os.getenv("DICOM_ARCHIVE_DIR", None)
+SAVE_DICOM_ARCHIVES = DICOM_ARCHIVE_DIR is not None
 
 inference_service = None
 processing_lock = asyncio.Lock()
@@ -80,7 +81,11 @@ async def startup_event():
     logger.info(f"LightGBM Model: {LIGHTGBM_MODEL_PATH}")
     logger.info(f"Optimal Threshold: {OPTIMAL_THRESHOLD}")
     logger.info(f"Device: {DEVICE}")
-    logger.info(f"DICOM Archive Directory: {DICOM_ARCHIVE_DIR}")
+    
+    if SAVE_DICOM_ARCHIVES:
+        logger.info(f"DICOM Archive Directory: {DICOM_ARCHIVE_DIR}")
+    else:
+        logger.info("DICOM Archive Directory: Not configured (archives will not be saved)")
 
     if DIFFUSION_CLASSIFIER_PATH:
         logger.info(f"Diffusion Classifier: {DIFFUSION_CLASSIFIER_PATH}")
@@ -88,9 +93,10 @@ async def startup_event():
         logger.info(f"Diffusion UNet: {DIFFUSION_UNET_PATH}")
         logger.info(f"Classifier Scale: {CLASSIFIER_SCALE}")
 
-    # Создаем директорию для сохранения DICOM архивов
-    os.makedirs(DICOM_ARCHIVE_DIR, exist_ok=True)
-    logger.info(f"✅ Директория для архивов создана: {DICOM_ARCHIVE_DIR}")
+    # Создаем директорию для сохранения DICOM архивов (если настроено)
+    if SAVE_DICOM_ARCHIVES:
+        os.makedirs(DICOM_ARCHIVE_DIR, exist_ok=True)
+        logger.info(f"✅ Директория для архивов создана: {DICOM_ARCHIVE_DIR}")
 
     if not os.path.exists(SUPERVISED_MODEL_PATH):
         raise FileNotFoundError(f"Supervised модель не найдена: {SUPERVISED_MODEL_PATH}")
@@ -151,12 +157,17 @@ def save_dicom_archive(temp_file_path: str, study_uid: str, original_filename: s
     Returns:
         Путь к сохраненному архиву или None при ошибке
     """
+    if not SAVE_DICOM_ARCHIVES:
+        logger.debug("Сохранение DICOM архивов отключено")
+        return None
+        
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         archive_filename = f"{timestamp}_{study_uid}.zip"
         archive_path = os.path.join(DICOM_ARCHIVE_DIR, archive_filename)
 
         shutil.copy2(temp_file_path, archive_path)
+        logger.info(f"✅ Архив сохранен: {archive_filename}")
         return archive_path
     except Exception as e:
         logger.error(f"Ошибка сохранения архива: {e}")
