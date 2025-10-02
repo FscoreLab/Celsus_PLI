@@ -235,7 +235,7 @@ async def predict(file: UploadFile = File(...)):
             )
 
         except Exception as e:
-            logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}")
+            logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}", exc_info=True)
             processing_time = time.time() - start_time
 
             try:
@@ -248,13 +248,26 @@ async def predict(file: UploadFile = File(...)):
             error_message = str(e)
             status_code = 500
 
-            if "Lungs not found" in error_message or "too low relative percentage" in error_message:
+            # Проверяем тип исключения напрямую
+            exception_class_name = e.__class__.__name__
+
+            if (exception_class_name == "LungsNotFoundError" or
+                    "Lungs not found" in error_message or
+                    "too low relative percentage" in error_message):
                 status_code = 422  # Unprocessable Entity
-                error_message = "Легкие не найдены на изображении или их относительный процент слишком мал."
+                error_message = (
+                    "Легкие не найдены на изображении или их "
+                    "относительный процент слишком мал."
+                )
                 logger.warning(f"⚠️ Легкие не найдены: {file.filename}")
-            elif "too small" in error_message and "mm" in error_message:
+            elif (exception_class_name == "InvalidLungsLengthError" or
+                    ("too small" in error_message and "mm" in error_message)):
                 status_code = 422  # Unprocessable Entity
-                error_message = f"Длина легких слишком мала. {error_message}"
+                # Извлекаем сообщение об ошибке, если оно есть
+                if hasattr(e, 'detail') and isinstance(e.detail, dict):
+                    error_message = e.detail.get('message', str(e))
+                else:
+                    error_message = f"Длина легких слишком мала. {error_message}"
                 logger.warning(f"⚠️ Короткие легкие: {file.filename}")
             elif "Не найдено серий с минимальным количеством валидных срезов" in error_message:
                 status_code = 422  # Unprocessable Entity
@@ -334,7 +347,7 @@ async def predict_nifti(file: UploadFile = File(...)):
             )
 
         except Exception as e:
-            logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}")
+            logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}", exc_info=True)
             processing_time = time.time() - start_time
 
             try:
@@ -347,13 +360,26 @@ async def predict_nifti(file: UploadFile = File(...)):
             error_message = str(e)
             status_code = 500
 
-            if "Lungs not found" in error_message or "too low relative percentage" in error_message:
+            # Проверяем тип исключения напрямую
+            exception_class_name = e.__class__.__name__
+
+            if (exception_class_name == "LungsNotFoundError" or
+                    "Lungs not found" in error_message or
+                    "too low relative percentage" in error_message):
                 status_code = 422
-                error_message = "Легкие не найдены на изображении или их относительный процент слишком мал."
+                error_message = (
+                    "Легкие не найдены на изображении или их "
+                    "относительный процент слишком мал."
+                )
                 logger.warning(f"⚠️ Легкие не найдены: {file.filename}")
-            elif "too small" in error_message and "mm" in error_message:
+            elif (exception_class_name == "InvalidLungsLengthError" or
+                    ("too small" in error_message and "mm" in error_message)):
                 status_code = 422
-                error_message = f"Длина легких слишком мала. {error_message}"
+                # Извлекаем сообщение об ошибке, если оно есть
+                if hasattr(e, 'detail') and isinstance(e.detail, dict):
+                    error_message = e.detail.get('message', str(e))
+                else:
+                    error_message = f"Длина легких слишком мала. {error_message}"
                 logger.warning(f"⚠️ Короткие легкие: {file.filename}")
 
             return JSONResponse(
