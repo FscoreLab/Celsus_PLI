@@ -36,13 +36,16 @@ RUN pip3 install beartype==0.21.0 blobfile==3.1.0
 # Копируем модели из best_models
 COPY best_models/supervised_model.pt /app/best_models/
 COPY best_models/CT_VocabFine_v2.pt /app/best_models/
+COPY best_models/lightgbm_model.pkl /app/best_models/
+
+# Копируем диффузионные модели (опционально)
+COPY best_models/ct_classifier.pt /app/best_models/
+COPY best_models/diffusion_checkpoint.pt /app/best_models/
 
 # Копируем код пакетов
 COPY fvlm/ /app/fvlm/
 COPY mednext/ /app/mednext/
 RUN pip3 install -e /app/fvlm
-
-COPY best_models/lightgbm_model.pkl /app/best_models/
 
 COPY CT_CLIP/ /app/CT_CLIP/
 COPY transformer_maskgit/ /app/transformer_maskgit/
