@@ -1215,10 +1215,10 @@ class LightGBMInference:
                 most_dangerous_feature = None
             else:
                 # Находим максимальный положительный SHAP вклад среди КОНКРЕТНЫХ патологий
-                # Исключаем агрегированные фичи (mean, max, top3, std) и групповые фичи (_group_)
+                # Исключаем агрегированные фичи (mean, max, top3, std), групповые фичи (_group_) и "normal"
                 feature_names = features_df.columns
                 pathology_mask = positive_mask & ~np.array([
-                    any(x in str(feat) for x in ['_mean', '_max', '_top3', '_std', '_group_'])
+                    any(x in str(feat) for x in ['_mean', '_max', '_top3', '_std', '_group_', 'normal'])
                     for feat in feature_names
                 ])
                 
@@ -1276,16 +1276,16 @@ class LightGBMInference:
         str
             Название патологии
         """
-        # Удаляем префикс
-        if feature_name.startswith("supervised_"):
-            return feature_name.replace("supervised_", "")
-        elif feature_name.startswith("ctclip_"):
-            return feature_name.replace("ctclip_", "")
-        elif "_mean" in feature_name or "_max" in feature_name or "_top3" in feature_name:
-            # Агрегированные фичи
-            return feature_name
-        else:
-            return feature_name
+        # Удаляем префиксы моделей
+        prefixes_to_remove = ["supervised_", "ctclip_", "kolyan_", "okhr_", "diffusion_classifier_", "diffusion_"]
+        
+        result = feature_name
+        for prefix in prefixes_to_remove:
+            if result.startswith(prefix):
+                result = result.replace(prefix, "", 1)
+                break
+        
+        return result
 
     def unload(self):
         """Выгружает модель из памяти."""

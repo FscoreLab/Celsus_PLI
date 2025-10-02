@@ -181,7 +181,7 @@ async def predict(file: UploadFile = File(...)):
         except Exception:
             pass
 
-        # Проверяем специфичные ошибки про легкие (от FVLM/TotalSegmentator)
+        # Проверяем специфичные ошибки
         error_message = str(e)
         status_code = 500
         
@@ -193,6 +193,10 @@ async def predict(file: UploadFile = File(...)):
             status_code = 422  # Unprocessable Entity
             error_message = f"Длина легких слишком мала. {error_message}"
             logger.warning(f"⚠️ Короткие легкие: {file.filename}")
+        elif "Не найдено серий с минимальным количеством валидных срезов" in error_message:
+            status_code = 422  # Unprocessable Entity
+            error_message = "Недостаточно срезов для обработки (требуется минимум 20 валидных срезов)."
+            logger.warning(f"⚠️ Недостаточно срезов: {file.filename}")
 
         return JSONResponse(
             status_code=status_code,
