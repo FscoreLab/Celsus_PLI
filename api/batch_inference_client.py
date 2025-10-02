@@ -121,22 +121,30 @@ def batch_process(api_url: str, input_dir: Path, output_excel: Path):
 
     df_results = pd.DataFrame(results)
 
-    columns_map = {
-        "path_to_study": "path_to_study",
-        "study_uid": "study_uid",
-        "series_uid": "series_uid",
-        "probability_of_pathology": "probability_of_pathology",
-        "pathology": "pathology",
-        "processing_status": "processing_status",
-        "time_of_processing": "time_of_processing",
-        "most_dangerous_pathology_type": "most_dangerous_pathology_type",
-    }
-
-    final_columns = list(columns_map.keys())
+    # Базовые колонки, которые должны быть всегда
+    base_columns = [
+        "path_to_study",
+        "study_uid",
+        "series_uid",
+        "probability_of_pathology",
+        "pathology",
+        "processing_status",
+        "time_of_processing",
+    ]
+    
+    # Опциональные колонки
+    optional_columns = [
+        "most_dangerous_pathology_type",
+        "error",
+    ]
+    
+    # Собираем только те колонки, которые есть в данных
+    final_columns = [col for col in base_columns if col in df_results.columns]
+    for col in optional_columns:
+        if col in df_results.columns:
+            final_columns.append(col)
+    
     df_final = df_results[final_columns].copy()
-
-    if "error" in df_results.columns:
-        df_final["error"] = df_results["error"]
 
     print(f"\n💾 Сохраняем результаты в: {output_excel}")
     df_final.to_excel(output_excel, index=False, engine="openpyxl")
@@ -167,10 +175,12 @@ def batch_process(api_url: str, input_dir: Path, output_excel: Path):
         print(f"  Мин: {min(times):.1f} сек")
         print(f"  Макс: {max(times):.1f} сек")
 
-        dangerous_pathologies = pd.Series([r["most_dangerous_pathology_type"] for r in success_results]).value_counts()
-        print("\nТоп-5 наиболее частых опасных патологий:")
-        for i, (pathology, count) in enumerate(dangerous_pathologies.head(5).items(), 1):
-            print(f"  {i}. {pathology}: {count}")
+        # Статистика по патологиям (если есть в результатах)
+        if success_results and "most_dangerous_pathology_type" in success_results[0]:
+            dangerous_pathologies = pd.Series([r["most_dangerous_pathology_type"] for r in success_results]).value_counts()
+            print("\nТоп-5 наиболее частых опасных патологий:")
+            for i, (pathology, count) in enumerate(dangerous_pathologies.head(5).items(), 1):
+                print(f"  {i}. {pathology}: {count}")
 
     print(f"\n✅ Готово! Результаты сохранены в: {output_excel}")
 
