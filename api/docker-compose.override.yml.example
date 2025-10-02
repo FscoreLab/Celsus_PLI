@@ -1,19 +1,13 @@
-# Пример docker-compose.override.yml для локальной разработки
-# Скопируйте этот файл в docker-compose.override.yml и раскомментируйте нужные volume mounts
+# Пример файла docker-compose.override.yml для локального развертывания
+# Скопируйте этот файл в docker-compose.override.yml и настройте под свои нужды
+# docker-compose.override.yml автоматически применяется поверх docker-compose.yml
+# и НЕ коммитится в git
 
 version: '3.8'
 
 services:
   ct-clip-api:
     volumes:
-      # Опционально: монтировать локальные модели для быстрой итерации
-      # - ../best_models:/app/best_models
-      
-      # Опционально: монтировать локальный код для разработки без rebuild
-      # - ../api:/app/api
-      # - ../CT_CLIP:/app/CT_CLIP
-      # - ../diffusion_anomaly:/app/diffusion_anomaly
-      
-      # Опционально: локальная папка с DICOM архивами для тестирования
-      # - /path/to/your/dicom/archives:/app/dicom_archives
-
+      # Раскомментируйте и укажите путь для сохранения DICOM архивов на хосте
+      # Формат: <путь_на_хосте>:/app/dicom_archives
+      - /astral-data/Minio/kate/data/interim/hackathon_dicoms:/app/dicom_archives

@@ -15,6 +15,7 @@ services:
       - LIGHTGBM_MODEL_PATH=/app/best_models/lightgbm_model.pkl
       - OPTIMAL_THRESHOLD=0.59
       - DEVICE=cuda
+      - DICOM_ARCHIVE_DIR=/app/dicom_archives
       - DIFFUSION_CLASSIFIER_PATH=/app/best_models/ct_classifier.pt
       - DIFFUSION_UNET_PATH=/app/best_models/diffusion_checkpoint.pt
       - CLASSIFIER_SCALE=100.0
