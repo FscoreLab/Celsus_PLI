@@ -1043,12 +1043,12 @@ class LightGBMInference:
 
         # Получаем список фичей
         if hasattr(self.model, "feature_names_in_"):
-            self.feature_names = list(self.model.feature_names_in_)
+            self.feature_names = [str(f) for f in self.model.feature_names_in_]
         elif hasattr(self.model, "named_steps"):
             # Если это Pipeline, получаем фичи из последнего шага
             final_step = list(self.model.named_steps.values())[-1]
             if hasattr(final_step, "feature_name_"):
-                self.feature_names = list(final_step.feature_name_)
+                self.feature_names = [str(f) for f in final_step.feature_name_]
 
         num_features = len(self.feature_names) if self.feature_names else "неизвестно"
         logger.info(f"LightGBM модель загружена, ожидается {num_features} фичей")
@@ -1179,6 +1179,9 @@ class LightGBMInference:
         # Создаем датафрейм
         df = pd.DataFrame([features])
 
+        # Конвертируем все имена колонок в строки (fix для sklearn validation)
+        df.columns = df.columns.astype(str)
+
         # Фильтруем только нужные фичи, если список известен
         if self.feature_names:
             # Добавляем недостающие фичи как 0
@@ -1187,6 +1190,9 @@ class LightGBMInference:
                     df[feat] = 0.0
             # Оставляем только нужные фичи в правильном порядке
             df = df[self.feature_names]
+            
+            # Еще раз конвертируем колонки в строки после фильтрации
+            df.columns = df.columns.astype(str)
 
         return df
 
@@ -1478,9 +1484,6 @@ class LightGBMInferenceService:
         fvlm_config_path: str = None,
         # MedNext
         use_mednext: bool = True,
-        # Thoracic модель
-        lightgbm_thoracic_model_path: str = None,
-        optimal_threshold_thoracic: float = 0.5,
     ):
         self.supervised_model_path = supervised_model_path
         self.ctclip_model_path = ctclip_model_path
@@ -1490,20 +1493,10 @@ class LightGBMInferenceService:
         self.use_fvlm = fvlm_model_path is not None
         self.use_diffusion_reconstruction = use_diffusion_reconstruction
         self.use_mednext = use_mednext
-        self.use_thoracic = lightgbm_thoracic_model_path is not None
 
         self.supervised_inference = SupervisedModelInference(supervised_model_path, device)
         self.ctclip_inference = UniversalCTInference(model_path=ctclip_model_path, device=device, verbose=False)
         self.lightgbm_inference = LightGBMInference(lightgbm_model_path, optimal_threshold)
-
-        # Thoracic модель (опциональная)
-        self.lightgbm_thoracic_inference = None
-        if self.use_thoracic:
-            logger.info("Инициализация LightGBM Thoracic модели...")
-            self.lightgbm_thoracic_inference = LightGBMInference(
-                lightgbm_thoracic_model_path, optimal_threshold_thoracic
-            )
-            logger.info("LightGBM Thoracic inference инициализирован")
 
         # Инициализируем diffusion модели если пути указаны
         self.diffusion_classifier_inference = None
@@ -1660,19 +1653,6 @@ class LightGBMInferenceService:
         self.lightgbm_inference.unload()
         logger.info("LightGBM модель выгружена")
 
-        # 7. LightGBM Thoracic модель (опциональная)
-        lgbm_thoracic_result = None
-        if self.use_thoracic and self.lightgbm_thoracic_inference:
-            logger.info("Загружаем LightGBM Thoracic модель...")
-            self.lightgbm_thoracic_inference.load_model()
-
-            # Используем те же фичи
-            lgbm_thoracic_result = self.lightgbm_thoracic_inference.predict(features_df)
-
-            # Выгружаем Thoracic модель
-            self.lightgbm_thoracic_inference.unload()
-            logger.info("LightGBM Thoracic модель выгружена")
-
         # Формируем финальный результат
         result = {
             "study_uid": study_uid,
@@ -1681,14 +1661,6 @@ class LightGBMInferenceService:
             "pathology": int(lgbm_result["prediction"]),
             "top_pathologies": lgbm_result["top_pathologies"],
         }
-
-        # Добавляем результаты thoracic модели если есть
-        if lgbm_thoracic_result:
-            result["probability_of_pathology_thoracic"] = lgbm_thoracic_result["probability"]
-            result["pathology_thoracic"] = int(lgbm_thoracic_result["prediction"])
-        else:
-            result["probability_of_pathology_thoracic"] = None
-            result["pathology_thoracic"] = None
 
         if result["pathology"] == 0:
             result["most_dangerous_pathology_type"] = None

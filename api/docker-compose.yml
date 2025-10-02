@@ -13,9 +13,7 @@ services:
       - SUPERVISED_MODEL_PATH=/app/best_models/supervised_model.pt
       - CTCLIP_MODEL_PATH=/app/best_models/CT_VocabFine_v2.pt
       - LIGHTGBM_MODEL_PATH=/app/best_models/lightgbm_model.pkl
-      - LIGHTGBM_THORACIC_MODEL_PATH=/app/best_models/lightgbm_thoracic_model.pkl
       - OPTIMAL_THRESHOLD=0.59
-      - OPTIMAL_THRESHOLD_THORACIC=0.5
       - DEVICE=cuda
       - DIFFUSION_CLASSIFIER_PATH=/app/best_models/ct_classifier.pt
       - DIFFUSION_UNET_PATH=/app/best_models/diffusion_checkpoint.pt

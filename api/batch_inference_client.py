@@ -143,9 +143,6 @@ def batch_process(api_url: str, input_dir: Path, output_excel: Path):
     # Опциональные колонки
     optional_columns = [
         "most_dangerous_pathology_type",
-        # Thoracic модель
-        "probability_of_pathology_thoracic",
-        "pathology_thoracic",
         "error",
     ]
 

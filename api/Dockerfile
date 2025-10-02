@@ -47,7 +47,6 @@ COPY mednext/ /app/mednext/
 RUN pip3 install -e /app/fvlm
 
 COPY best_models/lightgbm_model.pkl /app/best_models/
-COPY best_models/lightgbm_thoracic_model.pkl /app/best_models/
 
 COPY CT_CLIP/ /app/CT_CLIP/
 COPY transformer_maskgit/ /app/transformer_maskgit/
