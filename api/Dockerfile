@@ -29,15 +29,17 @@ COPY best_models/CT_VocabFine_v2.pt /app/best_models/
 COPY best_models/lightgbm_model.pkl /app/best_models/
 
 # Копируем код пакетов
+COPY fvlm/ /app/fvlm/
+COPY mednext/ /app/mednext/
+RUN pip3 install -e /app/fvlm
+RUN pip3 install beartype==0.21.0
 COPY CT_CLIP/ /app/CT_CLIP/
 COPY transformer_maskgit/ /app/transformer_maskgit/
 COPY diffusion_anomaly/ /app/diffusion_anomaly/
-COPY fvlm/ /app/fvlm/
-COPY mednext/ /app/mednext/
+COPY scripts/ /app/scripts/
 COPY api/ /app/api/
-
-# Устанавливаем пакеты (только те, у которых есть setup.py)
-RUN pip3 install -e /app/fvlm
+COPY ct_clip_classifier.py /app/
+COPY api/ctclip_pathology_groups.py /app/
 
 # Порт для API
 EXPOSE 8000

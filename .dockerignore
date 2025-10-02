@@ -51,9 +51,6 @@ Dockerfile*
 !api/Dockerfile
 docker-compose*.yml
 
-# Scripts (не нужны в образе)
-scripts/
-
 # Jupyter
 *.ipynb
 .ipynb_checkpoints

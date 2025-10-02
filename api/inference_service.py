@@ -27,6 +27,7 @@ import torch.nn.functional as F
 from transformers import BertModel, BertTokenizer
 from typing import Dict, Optional, Union
 from mednext.inference import init_model, predict_single_volume
+from fvlm.inference_nifti_separate_masks import NiftiInferenceSeparateMasks
 
 from CT_CLIP.ct_clip.ct_clip import CTCLIP
 from ct_clip_classifier import SimpleCTCLIPClassifier
