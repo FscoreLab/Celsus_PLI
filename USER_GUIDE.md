@@ -129,7 +129,7 @@ curl http://93.187.188.50:7654/health
 }
 ```
 
-#### Инференс
+#### Инференс на DICOM архиве
 
 ```bash
 # Локальный
@@ -143,11 +143,27 @@ curl -X POST http://93.187.188.50:7654/predict \
   -o result.json
 ```
 
+#### Инференс на NIFTI файле
+
+Если у вас уже есть NIFTI файлы (`.nii.gz` или `.nii`), вы можете использовать их напрямую:
+
+```bash
+# Локальный
+curl -X POST http://localhost:8000/predict_nifti \
+  -F "file=@volume.nii.gz" \
+  -o result.json
+
+# Облачный
+curl -X POST http://93.187.188.50:7654/predict_nifti \
+  -F "file=@volume.nii.gz" \
+  -o result.json
+```
+
 ---
 
 ## 🐍 Использование через Python
 
-### Базовый пример
+### Базовый пример (DICOM)
 
 ```python
 import requests
@@ -165,7 +181,30 @@ if response.status_code == 200:
     result = response.json()
     print(f"Probability: {result['probability_of_pathology']:.2%}")
     print(f"Pathology: {result['pathology']}")
-    print(f"Most dangerous: {result['most_dangerous_pathology_type']}")
+    print(f"Top pathologies: {result['top_pathologies']}")
+else:
+    print(f"Error: {response.status_code}")
+```
+
+### Базовый пример (NIFTI)
+
+```python
+import requests
+
+# Выберите URL
+api_url = "http://localhost:8000/predict_nifti"  # Локальный
+# api_url = "http://93.187.188.50:7654/predict_nifti"  # Облачный
+
+nifti_path = "volume.nii.gz"
+
+with open(nifti_path, "rb") as f:
+    response = requests.post(api_url, files={"file": f})
+
+if response.status_code == 200:
+    result = response.json()
+    print(f"Probability: {result['probability_of_pathology']:.2%}")
+    print(f"Pathology: {result['pathology']}")
+    print(f"Top pathologies: {result['top_pathologies']}")
 else:
     print(f"Error: {response.status_code}")
 ```

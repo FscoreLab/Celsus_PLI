@@ -57,7 +57,7 @@ class InferenceResponse(BaseModel):
     series_uid: str
     probability_of_pathology: float
     pathology: int  # 0 (норма) или 1 (патология)
-    most_dangerous_pathology_type: Optional[str] = None
+    top_pathologies: list[str]  # Топ-патологии от 3 моделей: MedNeXt, FVLM, CT-CLIP
     processing_status: str
     time_of_processing: float
 
@@ -136,7 +136,7 @@ async def predict(file: UploadFile = File(...)):
         file: ZIP архив с DICOM файлами
 
     Returns:
-        InferenceResponse с предсказаниями обеих моделей
+        InferenceResponse с предсказаниями всех моделей
     """
     if inference_service is None:
         raise HTTPException(status_code=503, detail="Сервис не инициализирован")
@@ -161,15 +161,15 @@ async def predict(file: UploadFile = File(...)):
         processing_time = time.time() - start_time
         logger.info(f"✅ Обработка завершена за {processing_time:.2f} сек")
 
-        # Для нормы не возвращаем most_dangerous_pathology_type
-        most_dangerous = result["most_dangerous_pathology_type"] if result["pathology"] == 1 else None
+        # Для нормы возвращаем пустой список патологий
+        top_pathologies = result.get("top_pathologies", []) if result["pathology"] == 1 else []
 
         return InferenceResponse(
             study_uid=result["study_uid"],
             series_uid=result["series_uid"],
             probability_of_pathology=result["probability_of_pathology"],
             pathology=result["pathology"],
-            most_dangerous_pathology_type=most_dangerous,
+            top_pathologies=top_pathologies,
             processing_status="Success",
             time_of_processing=processing_time,
         )
@@ -209,6 +209,95 @@ async def predict(file: UploadFile = File(...)):
                 "probability_of_pathology": None,
                 "pathology": None,
                 "most_dangerous_pathology_type": None,
+                "processing_status": "Failure",
+                "time_of_processing": processing_time,
+                "error": error_message,
+            },
+        )
+
+
+@app.post("/predict_nifti", response_model=InferenceResponse)
+async def predict_nifti(file: UploadFile = File(...)):
+    """
+    Эндпоинт для инференса на NIFTI файле напрямую.
+
+    Args:
+        file: NIFTI файл (.nii.gz)
+
+    Returns:
+        InferenceResponse с предсказаниями всех моделей
+    """
+    if inference_service is None:
+        raise HTTPException(status_code=503, detail="Сервис не инициализирован")
+
+    if not file.filename.endswith(".nii.gz") and not file.filename.endswith(".nii"):
+        raise HTTPException(status_code=400, detail="Поддерживаются только NIFTI файлы (.nii.gz или .nii)")
+
+    start_time = time.time()
+
+    try:
+        # Сохраняем NIFTI файл во временную директорию
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".nii.gz") as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+
+        logger.info(f"Обрабатываем NIFTI файл: {file.filename} ({len(content)} bytes)")
+
+        # Генерируем dummy study_uid и series_uid из имени файла
+        volume_name = file.filename.replace(".nii.gz", "").replace(".nii", "")
+        study_uid = f"nifti_{volume_name}"
+        series_uid = f"nifti_{volume_name}_series"
+
+        # Вызываем process_nifti_file напрямую
+        result = inference_service.process_nifti_file(temp_file_path, study_uid, series_uid)
+
+        os.unlink(temp_file_path)
+
+        processing_time = time.time() - start_time
+        logger.info(f"✅ Обработка завершена за {processing_time:.2f} сек")
+
+        return InferenceResponse(
+            study_uid=result["study_uid"],
+            series_uid=result["series_uid"],
+            probability_of_pathology=result["probability_of_pathology"],
+            pathology=result["pathology"],
+            top_pathologies=result["top_pathologies"],
+            processing_status="Success",
+            time_of_processing=processing_time,
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при обработке файла {file.filename}: {e}")
+        processing_time = time.time() - start_time
+
+        try:
+            if "temp_file_path" in locals():
+                os.unlink(temp_file_path)
+        except Exception:
+            pass
+
+        # Обработка специфичных ошибок
+        error_message = str(e)
+        status_code = 500
+        
+        if "Lungs not found" in error_message or "too low relative percentage" in error_message:
+            status_code = 422
+            error_message = "Легкие не найдены на изображении или их относительный процент слишком мал."
+            logger.warning(f"⚠️ Легкие не найдены: {file.filename}")
+        elif "too small" in error_message and "mm" in error_message:
+            status_code = 422
+            error_message = f"Длина легких слишком мала. {error_message}"
+            logger.warning(f"⚠️ Короткие легкие: {file.filename}")
+
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "study_uid": "",
+                "series_uid": "",
+                "probability_of_pathology": None,
+                "pathology": None,
+                "top_pathologies": [],
                 "processing_status": "Failure",
                 "time_of_processing": processing_time,
                 "error": error_message,

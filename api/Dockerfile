@@ -36,12 +36,13 @@ RUN pip3 install beartype==0.21.0 blobfile==3.1.0
 # Копируем модели из best_models
 COPY best_models/supervised_model.pt /app/best_models/
 COPY best_models/CT_VocabFine_v2.pt /app/best_models/
-COPY best_models/lightgbm_model.pkl /app/best_models/
 
 # Копируем код пакетов
 COPY fvlm/ /app/fvlm/
 COPY mednext/ /app/mednext/
 RUN pip3 install -e /app/fvlm
+
+COPY best_models/lightgbm_model.pkl /app/best_models/
 
 COPY CT_CLIP/ /app/CT_CLIP/
 COPY transformer_maskgit/ /app/transformer_maskgit/
@@ -58,7 +59,7 @@ EXPOSE 8000
 ENV SUPERVISED_MODEL_PATH=/app/best_models/supervised_model.pt
 ENV CTCLIP_MODEL_PATH=/app/best_models/CT_VocabFine_v2.pt
 ENV LIGHTGBM_MODEL_PATH=/app/best_models/lightgbm_model.pkl
-ENV OPTIMAL_THRESHOLD=0.6
+ENV OPTIMAL_THRESHOLD=0.57
 
 # FVLM пути
 ENV FVLM_MODEL_PATH=/app/fvlm/weights/fvlm_model.pth

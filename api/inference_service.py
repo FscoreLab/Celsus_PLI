@@ -1226,94 +1226,56 @@ class LightGBMInference:
         prob = self.model.predict_proba(features_df)[0, 1]
         prediction = 1 if prob >= self.optimal_threshold else 0
 
-        # SHAP анализ для определения most dangerous pathology
-        try:
-            # Создаем explainer если еще не создан
-            if self.shap_explainer is None:
-                logger.info("Создаем SHAP explainer...")
-                # Получаем базовую модель из pipeline если нужно
-                model_to_explain = self.model
-                if hasattr(self.model, "named_steps"):
-                    model_to_explain = self.model.named_steps["lr"]  # последний шаг
-
-                self.shap_explainer = shap.TreeExplainer(model_to_explain)
-
-            # Вычисляем SHAP values
-            shap_values = self.shap_explainer.shap_values(features_df)
-
-            # Если бинарная классификация, берем values для класса 1
-            if isinstance(shap_values, list):
-                shap_values = shap_values[1]
-
-            # Находим фичу с максимальным положительным SHAP вкладом
-            shap_values_flat = shap_values[0] if len(shap_values.shape) > 1 else shap_values
-            
-            # Фильтруем только положительные SHAP значения (увеличивающие вероятность патологии)
-            positive_mask = shap_values_flat > 0
-            max_shap_idx = None  # Инициализируем для дальнейшего использования
-            
-            if not np.any(positive_mask):
-                # Нет положительных SHAP вкладов - патология не обнаружена
-                most_dangerous_pathology = "No specific pathology detected"
-                most_dangerous_feature = None
-            else:
-                # Находим максимальный положительный SHAP вклад среди КОНКРЕТНЫХ патологий
-                # Исключаем агрегированные фичи (mean, max, top3, std), групповые фичи (_group_) и "normal"
-                feature_names = features_df.columns
-                pathology_mask = positive_mask & ~np.array([
-                    any(x in str(feat) for x in ['_mean', '_max', '_top3', '_std', '_group_', 'normal'])
-                    for feat in feature_names
-                ])
-                
-                if np.any(pathology_mask):
-                    # Берем максимальный SHAP среди конкретных патологий
-                    pathology_shap_values = shap_values_flat.copy()
-                    pathology_shap_values[~pathology_mask] = -np.inf
-                    max_shap_idx = np.argmax(pathology_shap_values)
-                else:
-                    # Если нет конкретных патологий, берем максимальный положительный
-                    positive_shap_values = shap_values_flat.copy()
-                    positive_shap_values[~positive_mask] = -np.inf
-                    max_shap_idx = np.argmax(positive_shap_values)
-                
-                most_dangerous_feature = features_df.columns[max_shap_idx]
-                most_dangerous_pathology = self._feature_to_pathology_name(most_dangerous_feature)
-
-            # Собираем топ-5 положительных SHAP вкладов
-            top_shap_indices = np.argsort(shap_values_flat)[-5:][::-1]
-            top_shap_features = {}
-            top_shap_with_probs = []
-            for idx in top_shap_indices:
-                if shap_values_flat[idx] > 0:  # Только положительные вклады
-                    feat_name = features_df.columns[idx]
-                    feat_shap = float(shap_values_flat[idx])
-                    feat_prob = float(features_df.iloc[0, idx])
-                    top_shap_features[feat_name] = feat_shap
-                    top_shap_with_probs.append({
-                        "feature": feat_name,
-                        "shap": feat_shap,
-                        "probability": feat_prob
-                    })
-            logger.info(f"Top-5 SHAP features: {top_shap_features}")
-            for item in top_shap_with_probs:
-                logger.info(f"  {item['feature']}: SHAP={item['shap']:.4f}, Probability={item['probability']:.4f}")
-
-            if most_dangerous_feature is not None:
-                shap_value = shap_values_flat[max_shap_idx]
-                logger.info(f"Most dangerous pathology: {most_dangerous_pathology} (SHAP: {shap_value:.4f})")
-            else:
-                logger.info(f"Most dangerous pathology: {most_dangerous_pathology}")
-
-        except Exception as e:
-            logger.warning(f"Ошибка SHAP анализа: {e}")
-            most_dangerous_pathology = "Unknown"
-            top_shap_features = {}
+        # Находим топ-патологию от каждой из 3 моделей: MedNeXt (kolyan), FVLM (okhr), CT-CLIP (ctclip)
+        top_pathologies = []
+        
+        # 1. MedNeXt (kolyan_) - исключаем normal
+        kolyan_features = {col: float(features_df.iloc[0][col]) 
+                          for col in features_df.columns 
+                          if col.startswith('kolyan_') and 'normal' not in col.lower() 
+                          and not any(x in col for x in ['_mean', '_max', '_top3', '_std'])}
+        if kolyan_features:
+            top_kolyan_feat = max(kolyan_features.items(), key=lambda x: x[1])
+            pathology_name = self._feature_to_pathology_name(top_kolyan_feat[0])
+            logger.info(f"MedNeXt топ-патология: {pathology_name} (prob={top_kolyan_feat[1]:.4f})")
+            top_pathologies.append(pathology_name)
+        
+        # 2. FVLM (okhr_)
+        okhr_features = {col: float(features_df.iloc[0][col]) 
+                        for col in features_df.columns 
+                        if col.startswith('okhr_') and 'normal' not in col.lower()
+                        and not any(x in col for x in ['_mean', '_max', '_top3', '_std'])}
+        if okhr_features:
+            top_okhr_feat = max(okhr_features.items(), key=lambda x: x[1])
+            pathology_name = self._feature_to_pathology_name(top_okhr_feat[0])
+            logger.info(f"FVLM топ-патология: {pathology_name} (prob={top_okhr_feat[1]:.4f})")
+            top_pathologies.append(pathology_name)
+        
+        # 3. CT-CLIP (ctclip_)
+        ctclip_features = {col: float(features_df.iloc[0][col]) 
+                          for col in features_df.columns 
+                          if col.startswith('ctclip_') and 'normal' not in col.lower()
+                          and not any(x in col for x in ['_mean', '_max', '_top3', '_std', '_group_'])}
+        if ctclip_features:
+            top_ctclip_feat = max(ctclip_features.items(), key=lambda x: x[1])
+            pathology_name = self._feature_to_pathology_name(top_ctclip_feat[0])
+            logger.info(f"CT-CLIP топ-патология: {pathology_name} (prob={top_ctclip_feat[1]:.4f})")
+            top_pathologies.append(pathology_name)
+        
+        # Убираем дубликаты, сохраняя порядок
+        seen = set()
+        unique_pathologies = []
+        for p in top_pathologies:
+            if p not in seen:
+                seen.add(p)
+                unique_pathologies.append(p)
+        
+        logger.info(f"Топ-патологии (уникальные): {unique_pathologies}")
 
         return {
             "probability": float(prob),
             "prediction": int(prediction),
-            "most_dangerous_pathology": most_dangerous_pathology,
-            "top_shap_features": top_shap_features,
+            "top_pathologies": unique_pathologies,
         }
 
     def _feature_to_pathology_name(self, feature_name: str) -> str:
@@ -1338,6 +1300,13 @@ class LightGBMInference:
             if result.startswith(prefix):
                 result = result.replace(prefix, "", 1)
                 break
+        
+        # Заменяем подчеркивания на пробелы
+        result = result.replace("_", " ")
+        
+        # Приводим первую букву к заглавной
+        if result:
+            result = result[0].upper() + result[1:]
         
         return result
 
@@ -1577,6 +1546,126 @@ class LightGBMInferenceService:
             )
             logger.info("MedNeXt inference инициализирован")
 
+    def process_nifti_file(self, nifti_file: str, study_uid: str, series_uid: str) -> Dict:
+        study_uid = study_uid or ""
+        series_uid = series_uid or ""
+        # 1. FVLM модель (если включена)
+        fvlm_preds = None
+        if self.use_fvlm and self.fvlm_inference:
+            logger.info("Загружаем FVLM модель...")
+            self.fvlm_inference.load_model()
+            fvlm_preds = self.fvlm_inference.predict(nifti_file)
+
+            # Выгружаем FVLM
+            self.fvlm_inference.unload_model()
+            logger.info("FVLM модель выгружена")
+
+        # 2. Supervised модель
+        logger.info("Загружаем supervised модель...")
+        self.supervised_inference.load_model()
+        supervised_preds = self.supervised_inference.predict(nifti_file)
+        logger.info(f"Supervised predictions (first 5): {dict(list(supervised_preds.items())[:5])}")
+        self.supervised_inference.unload()
+        logger.info("Supervised модель выгружена")
+
+        # 3. CT-CLIP модель
+        logger.info("Загружаем CT-CLIP модель...")
+        ctclip_result = self.ctclip_inference.infer(nifti_file, custom_pathologies=CTCLIP_PATHOLOGIES)
+
+        ctclip_preds = {}
+        for pathology, prob in ctclip_result["pathology_predictions"].items():
+            ctclip_preds[f"ctclip_{pathology}"] = prob
+        
+        logger.info(f"CT-CLIP predictions (first 5): {dict(list(ctclip_preds.items())[:5])}")
+
+        # Выгружаем CT-CLIP модель
+        if hasattr(self.ctclip_inference, "model") and self.ctclip_inference.model is not None:
+            del self.ctclip_inference.model
+            self.ctclip_inference.model = None
+            torch.cuda.empty_cache()
+        logger.info("CT-CLIP модель выгружена")
+
+        # 4. MedNext
+        mednext_preds = None
+        if self.use_mednext and self.mednext_inference is not None:
+            logger.info("Загружаем MedNeXt модель...")
+            self.mednext_inference.load_model()
+            mednext_preds = self.mednext_inference.predict(nifti_file)
+            logger.info(f"MedNeXt predictions: {mednext_preds}")
+            self.mednext_inference.unload_model()
+            logger.info("MedNeXt модель выгружена")
+
+
+        # 5. Diffusion модели (если включены)
+        diffusion_classifier_preds = None
+        diffusion_reconstruction_scores = None
+
+        if self.use_diffusion and self.diffusion_classifier_inference:
+            logger.info("Загружаем diffusion classifier...")
+            self.diffusion_classifier_inference.load_model()
+            diffusion_classifier_preds = self.diffusion_classifier_inference.predict(nifti_file)
+            logger.info(f"Diffusion classifier predictions: {diffusion_classifier_preds}")
+
+            if self.diffusion_reconstruction_inference and self.use_diffusion_reconstruction:
+                logger.info("Загружаем diffusion reconstruction...")
+                self.diffusion_reconstruction_inference.load_model()
+                diffusion_reconstruction_scores = self.diffusion_reconstruction_inference.predict(nifti_file)
+                logger.info(f"Diffusion reconstruction scores: {diffusion_reconstruction_scores}")
+
+                # Выгружаем reconstruction UNet (classifier остается)
+                if self.diffusion_reconstruction_inference.diffusion_model:
+                    del self.diffusion_reconstruction_inference.diffusion_model
+                    del self.diffusion_reconstruction_inference.diffusion
+                    self.diffusion_reconstruction_inference.diffusion_model = None
+                    self.diffusion_reconstruction_inference.diffusion = None
+                    torch.cuda.empty_cache()
+                logger.info("Diffusion reconstruction модель выгружена")
+
+            # Выгружаем classifier
+            if self.diffusion_classifier_inference.model:
+                del self.diffusion_classifier_inference.model
+                self.diffusion_classifier_inference.model = None
+                torch.cuda.empty_cache()
+            logger.info("Diffusion classifier выгружен")
+
+        # 6. LightGBM модель
+        logger.info("Загружаем LightGBM модель...")
+        self.lightgbm_inference.load_model()
+
+        # Подготавливаем фичи для LightGBM (включая diffusion если есть)
+        features_df = self.lightgbm_inference.prepare_features(
+            supervised_preds,
+            ctclip_preds,
+            diffusion_classifier_preds,
+            diffusion_reconstruction_scores,
+            mednext_preds=mednext_preds,
+            fvlm_preds=fvlm_preds,
+        )
+        logger.info(f"Features: {features_df.to_dict()}")
+
+        # Делаем предсказание
+        lgbm_result = self.lightgbm_inference.predict(features_df)
+
+        # Выгружаем LightGBM
+        self.lightgbm_inference.unload()
+        logger.info("LightGBM модель выгружена")
+
+        # Формируем финальный результат
+        result = {
+            "study_uid": study_uid,
+            "series_uid": series_uid,
+            "probability_of_pathology": lgbm_result["probability"],
+            "pathology": int(lgbm_result["prediction"]),
+            "top_pathologies": lgbm_result["top_pathologies"],
+        }
+
+        if result["pathology"] == 0:
+            result["most_dangerous_pathology_type"] = None
+
+        logger.info(f"Result: {result}")
+
+        return result     
+
 
     def process_zip_archive(self, zip_path: str) -> Dict:
         """
@@ -1622,120 +1711,4 @@ class LightGBMInferenceService:
                 logger.error(f"Ошибка конвертации DICOM в NIFTI: {e}")
                 raise
 
-            # 1. FVLM модель (если включена)
-            fvlm_preds = None
-            if self.use_fvlm and self.fvlm_inference:
-                logger.info("Загружаем FVLM модель...")
-                self.fvlm_inference.load_model()
-                fvlm_preds = self.fvlm_inference.predict(nifti_file)
-
-                # Выгружаем FVLM
-                self.fvlm_inference.unload_model()
-                logger.info("FVLM модель выгружена")
-
-            # 2. Supervised модель
-            logger.info("Загружаем supervised модель...")
-            self.supervised_inference.load_model()
-            supervised_preds = self.supervised_inference.predict(nifti_file)
-            logger.info(f"Supervised predictions (first 5): {dict(list(supervised_preds.items())[:5])}")
-            self.supervised_inference.unload()
-            logger.info("Supervised модель выгружена")
-
-            # 3. CT-CLIP модель
-            logger.info("Загружаем CT-CLIP модель...")
-            ctclip_result = self.ctclip_inference.infer(nifti_file, custom_pathologies=CTCLIP_PATHOLOGIES)
-
-            ctclip_preds = {}
-            for pathology, prob in ctclip_result["pathology_predictions"].items():
-                ctclip_preds[f"ctclip_{pathology}"] = prob
-            
-            logger.info(f"CT-CLIP predictions (first 5): {dict(list(ctclip_preds.items())[:5])}")
-
-            # Выгружаем CT-CLIP модель
-            if hasattr(self.ctclip_inference, "model") and self.ctclip_inference.model is not None:
-                del self.ctclip_inference.model
-                self.ctclip_inference.model = None
-                torch.cuda.empty_cache()
-            logger.info("CT-CLIP модель выгружена")
-
-            # 4. MedNext
-            mednext_preds = None
-            if self.use_mednext and self.mednext_inference is not None:
-                logger.info("Загружаем MedNeXt модель...")
-                self.mednext_inference.load_model()
-                mednext_preds = self.mednext_inference.predict(nifti_file)
-                logger.info(f"MedNeXt predictions: {mednext_preds}")
-                self.mednext_inference.unload_model()
-                logger.info("MedNeXt модель выгружена")
-
-
-            # 5. Diffusion модели (если включены)
-            diffusion_classifier_preds = None
-            diffusion_reconstruction_scores = None
-
-            if self.use_diffusion and self.diffusion_classifier_inference:
-                logger.info("Загружаем diffusion classifier...")
-                self.diffusion_classifier_inference.load_model()
-                diffusion_classifier_preds = self.diffusion_classifier_inference.predict(nifti_file)
-                logger.info(f"Diffusion classifier predictions: {diffusion_classifier_preds}")
-
-                if self.diffusion_reconstruction_inference and self.use_diffusion_reconstruction:
-                    logger.info("Загружаем diffusion reconstruction...")
-                    self.diffusion_reconstruction_inference.load_model()
-                    diffusion_reconstruction_scores = self.diffusion_reconstruction_inference.predict(nifti_file)
-                    logger.info(f"Diffusion reconstruction scores: {diffusion_reconstruction_scores}")
-
-                    # Выгружаем reconstruction UNet (classifier остается)
-                    if self.diffusion_reconstruction_inference.diffusion_model:
-                        del self.diffusion_reconstruction_inference.diffusion_model
-                        del self.diffusion_reconstruction_inference.diffusion
-                        self.diffusion_reconstruction_inference.diffusion_model = None
-                        self.diffusion_reconstruction_inference.diffusion = None
-                        torch.cuda.empty_cache()
-                    logger.info("Diffusion reconstruction модель выгружена")
-
-                # Выгружаем classifier
-                if self.diffusion_classifier_inference.model:
-                    del self.diffusion_classifier_inference.model
-                    self.diffusion_classifier_inference.model = None
-                    torch.cuda.empty_cache()
-                logger.info("Diffusion classifier выгружен")
-
-            # 6. LightGBM модель
-            logger.info("Загружаем LightGBM модель...")
-            self.lightgbm_inference.load_model()
-
-            # Подготавливаем фичи для LightGBM (включая diffusion если есть)
-            features_df = self.lightgbm_inference.prepare_features(
-                supervised_preds,
-                ctclip_preds,
-                diffusion_classifier_preds,
-                diffusion_reconstruction_scores,
-                mednext_preds=mednext_preds,
-                fvlm_preds=fvlm_preds,
-            )
-            logger.info(f"Features: {features_df.to_dict()}")
-
-            # Делаем предсказание
-            lgbm_result = self.lightgbm_inference.predict(features_df)
-
-            # Выгружаем LightGBM
-            self.lightgbm_inference.unload()
-            logger.info("LightGBM модель выгружена")
-
-            # Формируем финальный результат
-            result = {
-                "study_uid": study_uid,
-                "series_uid": series_uid,
-                "probability_of_pathology": lgbm_result["probability"],
-                "pathology": int(lgbm_result["prediction"]),
-                "most_dangerous_pathology_type": lgbm_result["most_dangerous_pathology"],
-            }
-            if result["pathology"] == 0:
-                result["most_dangerous_pathology_type"] = None
-
-            logger.info(f"Result: {result}")
-
-            return result
-
-
+            return self.process_nifti_file(nifti_file, study_uid, series_uid)

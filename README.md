@@ -216,7 +216,7 @@ curl -X POST "http://localhost:8000/predict" \
   "series_uid": "1.2.840.113619.2.yyy",
   "probability_of_pathology": 0.87,
   "pathology": 1,
-  "most_dangerous_pathology_type": "Pneumonia",
+  "top_pathologies": ["Pneumonia", "Consolidation", "Atelectasis"],
   "processing_status": "Success",
   "time_of_processing": 45.67
 }
@@ -227,9 +227,22 @@ curl -X POST "http://localhost:8000/predict" \
 - `series_uid` — уникальный идентификатор серии (DICOM SeriesInstanceUID)
 - `probability_of_pathology` — вероятность наличия патологии (0.0 - 1.0)
 - `pathology` — классификация: 0 (норма) или 1 (патология)
-- `most_dangerous_pathology_type` — конкретная патология, которая наиболее сильно повлияла на решение модели для данного исследования, или `"No specific pathology detected"` если модель не выявила конкретных патологий
+- `top_pathologies` — список топ-патологий
 - `processing_status` — статус обработки: "Success" или "Failure"
 - `time_of_processing` — время обработки в секундах
+
+### `POST /predict_nifti` — Инференс на NIFTI файле
+
+Этот endpoint позволяет отправлять NIFTI файлы напрямую, без конвертации из DICOM.
+
+```bash
+curl -X POST "http://localhost:8000/predict_nifti" \
+  -F "file=@/path/to/volume.nii.gz"
+```
+
+**Формат ответа:** идентичен `/predict`
+
+**Поддерживаемые форматы:** `.nii.gz`, `.nii`
 
 **Формат ответа (Failure):**
 ```json
