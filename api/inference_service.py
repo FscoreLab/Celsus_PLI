@@ -1097,14 +1097,19 @@ class LightGBMInference:
             for k, v in fvlm_norm.items():
                 features[k] = float(v)
 
-        def _collect(prefix: str) -> List[float]:
-            return [v for k, v in features.items() if k.startswith(prefix)]
+        def _collect(prefix: str, exclude_normal: bool = False) -> List[float]:
+            vals = [v for k, v in features.items() if k.startswith(prefix)]
+            if exclude_normal:
+                # Исключаем значения с ключом, содержащим "normal"
+                vals = [v for k, v in features.items() 
+                       if k.startswith(prefix) and "normal" not in k.lower()]
+            return vals
 
         # Вычисляем агрегированные фичи
         supervised_values = [features[f"supervised_{p}"] for p in self.supervised_pathologies]
         ctclip_values = [features[f"ctclip_{p}"] for p in self.ctclip_pathologies]
-        mednext_vals = _collect("kolyan_") # TODO integrate further
-        fvlm_vals = _collect("okhr_")  # TODO integrate further
+        mednext_vals = _collect("kolyan_", exclude_normal=True)
+        fvlm_vals = _collect("okhr_", exclude_normal=True)
 
         features["supervised_mean_probability"] = np.mean(supervised_values)
         features["ctclip_mean_probability"] = np.mean(ctclip_values)
@@ -1696,6 +1701,8 @@ class LightGBMInferenceService:
                 "pathology": int(lgbm_result["prediction"]),
                 "most_dangerous_pathology_type": lgbm_result["most_dangerous_pathology"],
             }
+            if result["pathology"] == 0:
+                result["most_dangerous_pathology_type"] = None
 
             logger.info(f"Result: {result}")
 

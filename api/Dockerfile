@@ -69,4 +69,4 @@ ENV DEVICE=cuda
 ENV PYTHONPATH=/app:$PYTHONPATH
 
 # Запуск API
-CMD ["python3", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python3", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "600", "--timeout-graceful-shutdown", "600"]
