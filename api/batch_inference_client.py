@@ -36,13 +36,13 @@ def process_single_archive(api_url: str, archive_path: Path) -> dict:
 
         if response.status_code == 200:
             result = response.json()
-            result["path_to_study"] = str(archive_path)
+            result["path_to_study"] = str(archive_path.absolute())
             result["processing_time_total"] = processing_time
             return result
         else:
             error_data = response.json() if response.headers.get("content-type") == "application/json" else {}
             return {
-                "path_to_study": str(archive_path),
+                "path_to_study": str(archive_path.absolute()),
                 "study_uid": "",
                 "series_uid": "",
                 "probability_of_pathology": 0.0,
@@ -55,7 +55,7 @@ def process_single_archive(api_url: str, archive_path: Path) -> dict:
 
     except requests.exceptions.Timeout:
         return {
-            "path_to_study": str(archive_path),
+            "path_to_study": str(archive_path.absolute()),
             "study_uid": "",
             "series_uid": "",
             "probability_of_pathology": 0.0,
@@ -67,7 +67,7 @@ def process_single_archive(api_url: str, archive_path: Path) -> dict:
         }
     except Exception as e:
         return {
-            "path_to_study": str(archive_path),
+            "path_to_study": str(archive_path.absolute()),
             "study_uid": "",
             "series_uid": "",
             "probability_of_pathology": 0.0,

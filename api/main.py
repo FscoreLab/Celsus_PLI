@@ -142,12 +142,12 @@ async def health():
 def save_dicom_archive(temp_file_path: str, study_uid: str, original_filename: str) -> Optional[str]:
     """
     Сохраняет DICOM архив в постоянное хранилище.
-    
+
     Args:
         temp_file_path: Путь к временному файлу
         study_uid: Study UID из DICOM
         original_filename: Оригинальное имя файла
-    
+
     Returns:
         Путь к сохраненному архиву или None при ошибке
     """
@@ -155,7 +155,7 @@ def save_dicom_archive(temp_file_path: str, study_uid: str, original_filename: s
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         archive_filename = f"{timestamp}_{study_uid}.zip"
         archive_path = os.path.join(DICOM_ARCHIVE_DIR, archive_filename)
-        
+
         shutil.copy2(temp_file_path, archive_path)
         return archive_path
     except Exception as e:
@@ -192,7 +192,7 @@ async def predict(file: UploadFile = File(...)):
             logger.info(f"Обрабатываем файл: {file.filename} ({len(content)} bytes)")
 
             result = inference_service.process_zip_archive(temp_file_path)
-            
+
             # Сохраняем архив в постоянное хранилище
             save_dicom_archive(temp_file_path, result["study_uid"], file.filename)
 
@@ -227,7 +227,7 @@ async def predict(file: UploadFile = File(...)):
             # Проверяем специфичные ошибки
             error_message = str(e)
             status_code = 500
-            
+
             if "Lungs not found" in error_message or "too low relative percentage" in error_message:
                 status_code = 422  # Unprocessable Entity
                 error_message = "Легкие не найдены на изображении или их относительный процент слишком мал."
@@ -321,7 +321,7 @@ async def predict_nifti(file: UploadFile = File(...)):
             # Обработка специфичных ошибок
             error_message = str(e)
             status_code = 500
-            
+
             if "Lungs not found" in error_message or "too low relative percentage" in error_message:
                 status_code = 422
                 error_message = "Легкие не найдены на изображении или их относительный процент слишком мал."
