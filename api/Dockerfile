@@ -37,7 +37,7 @@ RUN pip3 install beartype==0.21.0 blobfile==3.1.0
 COPY best_models/supervised_model.pt /app/best_models/
 COPY best_models/CT_VocabFine_v2.pt /app/best_models/
 
-# Копируем диффузионные модели (опционально)
+# Копируем диффузионные модели
 COPY best_models/ct_classifier.pt /app/best_models/
 COPY best_models/diffusion_checkpoint.pt /app/best_models/
 

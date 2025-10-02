@@ -10,13 +10,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SUPERVISED_MODEL_PATH=/app/models/supervised_model.pt
-      - CTCLIP_MODEL_PATH=/app/models/CT_VocabFine_v2.pt
-      - LIGHTGBM_MODEL_PATH=/app/models/lightgbm_model.pkl
+      - SUPERVISED_MODEL_PATH=/app/best_models/supervised_model.pt
+      - CTCLIP_MODEL_PATH=/app/best_models/CT_VocabFine_v2.pt
+      - LIGHTGBM_MODEL_PATH=/app/best_models/lightgbm_model.pkl
       - OPTIMAL_THRESHOLD=0.59
       - DEVICE=cuda
-      - DIFFUSION_CLASSIFIER_PATH=/app/models/ct_classifier.pt
-      - DIFFUSION_UNET_PATH=/app/models/diffusion_checkpoint.pt
+      - DIFFUSION_CLASSIFIER_PATH=/app/best_models/ct_classifier.pt
+      - DIFFUSION_UNET_PATH=/app/best_models/diffusion_checkpoint.pt
       - CLASSIFIER_SCALE=100.0
       # FVLM модели
       - FVLM_MODEL_PATH=/app/fvlm/weights/fvlm_model.pth
@@ -31,6 +31,4 @@ services:
               capabilities: [gpu]
     volumes:
       - /tmp:/tmp
-      - ../best_models:/app/models
-      - /astral-data/Minio/kate/data/interim/celsus_pli_dicom_zips:/app/dicom_archives
     restart: unless-stopped

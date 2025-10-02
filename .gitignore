@@ -55,6 +55,10 @@ logs/
 env/
 venv/
 
+# Docker
+docker-compose.override.yml
+nohup.out
+
 # Temporary files
 *.tmp
 *.temp
